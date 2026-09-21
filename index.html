@@ -14,19 +14,30 @@
   </head>
   <body>
     <div id="boot" class="boot" role="status" aria-live="polite">
-      <div class="boot-mark" aria-hidden="true"></div>
-      <p class="boot-kicker">Gastos del hogar</p>
-      <h1>Cargando el presupuesto…</h1>
-      <p>Abriendo el mes de Melissa y Lenin.</p>
+      <article class="boot-folio">
+        <div class="boot-mark" aria-hidden="true">
+          <span class="boot-leaf"></span>
+          <span class="boot-leaf boot-leaf-front"></span>
+        </div>
+        <p class="boot-kicker">Gastos del hogar</p>
+        <h1>Cargando el presupuesto…</h1>
+        <p>Abriendo el mes de Melissa y Lenin.</p>
+        <div class="boot-rule" aria-hidden="true"><span></span></div>
+      </article>
     </div>
 
     <div id="fatal" class="boot boot-error" hidden role="alert">
-      <div class="boot-mark boot-mark-error" aria-hidden="true"></div>
-      <p class="boot-kicker">No se pudo abrir</p>
-      <h1 id="fatal-title">Hubo un problema con los datos guardados</h1>
-      <p id="fatal-message"></p>
-      <p class="boot-hint">Puedes restaurar octubre 2026 y seguir desde ahí. Los cambios dañados de este dispositivo se reemplazan.</p>
-      <button type="button" class="btn btn-primary btn-cta" id="fatal-restore">Restaurar octubre 2026</button>
+      <article class="boot-folio">
+        <div class="boot-mark boot-mark-error" aria-hidden="true">
+          <span class="boot-leaf"></span>
+          <span class="boot-leaf boot-leaf-front"></span>
+        </div>
+        <p class="boot-kicker">No se pudo abrir</p>
+        <h1 id="fatal-title">Hubo un problema con los datos guardados</h1>
+        <p id="fatal-message"></p>
+        <p class="boot-hint">Puedes restaurar octubre 2026 y seguir desde ahí. Los cambios dañados de este dispositivo se reemplazan.</p>
+        <button type="button" class="btn btn-primary btn-cta" id="fatal-restore">Restaurar octubre 2026</button>
+      </article>
     </div>
 
     <div id="app" hidden>
