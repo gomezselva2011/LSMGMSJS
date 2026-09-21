@@ -539,6 +539,21 @@
       </div>
     </dialog>
 
+    <dialog id="overdue-dialog" class="overdue-dialog" role="alertdialog" aria-labelledby="overdue-title" aria-describedby="overdue-lede">
+      <form id="overdue-form" method="dialog">
+        <p class="eyebrow overdue-kicker">Emergencia</p>
+        <h2 id="overdue-title">Pagos atrasados</h2>
+        <p id="overdue-lede">
+          Estos gastos del mes ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte.
+        </p>
+        <ul id="overdue-list" class="overdue-list"></ul>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-ghost" id="overdue-close" value="close">Cerrar</button>
+          <button type="submit" class="btn btn-primary" id="overdue-ok" value="ok">Entendido</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
       <form id="confirm-form" method="dialog">
         <div class="dialog-head">

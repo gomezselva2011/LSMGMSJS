@@ -41,18 +41,29 @@ function firstAmount(...values) {
   return null
 }
 
+function ownDueDay(value) {
+  const day = Number(value)
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null
+}
+
 export function normalizeCharge(raw) {
   if (!raw || typeof raw !== 'object') return null
   const name = firstText(raw.name, raw.nombre, raw.title, raw.concepto, raw.label)
   const amount = firstAmount(raw.amount, raw.monto, raw.cents, raw.value, raw.pago)
   if (!name && amount == null) return null
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : newId('chg')
-  return {
+  const charge = {
     id,
     name: name || 'Subgasto',
     amount: amount ?? 0,
     currency: normalizeCurrency(raw.currency ?? raw.moneda),
   }
+  const dueDay = ownDueDay(raw.dueDay ?? raw.dia)
+  if (dueDay != null) charge.dueDay = dueDay
+  if (raw.paymentStatus != null && raw.paymentStatus !== '') charge.paymentStatus = raw.paymentStatus
+  else if (raw.pagoEstado != null && raw.pagoEstado !== '') charge.paymentStatus = raw.pagoEstado
+  else if (typeof raw.paid === 'boolean') charge.paymentStatus = raw.paid ? 'paid' : 'unpaid'
+  return charge
 }
 
 function asChargeList(value) {
@@ -129,6 +140,12 @@ export function normalizeExpense(raw) {
   raw.charges = readExpenseCharges(raw).map(normalizeCharge).filter(Boolean)
   raw.currency = normalizeCurrency(raw.currency)
   raw.details = normalizeDetails(raw.details)
+  const dueDay = ownDueDay(raw.dueDay)
+  raw.dueDay = dueDay
+  if (raw.paymentStatus == null || raw.paymentStatus === '') {
+    if (raw.pagoEstado != null && raw.pagoEstado !== '') raw.paymentStatus = raw.pagoEstado
+    else if (typeof raw.paid === 'boolean') raw.paymentStatus = raw.paid ? 'paid' : 'unpaid'
+  }
   normalizeRubro(raw)
   return raw
 }

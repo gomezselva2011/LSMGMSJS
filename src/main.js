@@ -51,6 +51,10 @@ import {
   resolveRubro,
   rubroMeta,
 } from './rubros.js'
+import {
+  listOverduePayments,
+  paymentStatusLabel,
+} from './payment-status.js'
 
 const bootEl = document.querySelector('#boot')
 const fatalEl = document.querySelector('#fatal')
@@ -61,6 +65,7 @@ const incomeListEl = document.querySelector('#income-list')
 const categoryGridEl = document.querySelector('#category-grid')
 const formDialog = document.querySelector('#form-dialog')
 const confirmDialog = document.querySelector('#confirm-dialog')
+const overdueDialog = document.querySelector('#overdue-dialog')
 const itemForm = document.querySelector('#item-form')
 const chargeForm = document.querySelector('#charge-form')
 const detailsDialog = document.querySelector('#details-dialog')
@@ -91,6 +96,7 @@ let longPressTimer = 0
 let longPressStart = null
 let currentUser = null
 let authRequired = false
+let overdueAlertShown = false
 const expandedSubgastoIds = new Set()
 const DRAG_MIME = 'application/x-gastos-expense'
 const CATEGORY_MIME = 'application/x-gastos-category'
@@ -681,6 +687,59 @@ function render() {
   if (analytics) analytics.hidden = currentView !== 'analytics'
   if (currentView === 'analytics') renderAnalytics()
   if (detailsDialog?.open && detailsExpenseId) renderCardDialog()
+}
+
+function overdueLineHtml(line) {
+  const status = paymentStatusLabel(line.paymentStatus)
+  const parent =
+    line.kind === 'charge' && line.parentName
+      ? `<span class="overdue-parent">en ${escapeHtml(line.parentName)}</span>`
+      : ''
+  const openBtn = canEdit()
+    ? `<button type="button" class="btn btn-row" data-action="open-overdue" data-id="${escapeHtml(line.expenseId)}">Ver gasto</button>`
+    : ''
+  return `
+    <li class="overdue-item">
+      <div class="overdue-copy">
+        <strong>${escapeHtml(line.name)}</strong>
+        ${parent}
+        <span class="overdue-meta">${escapeHtml(line.categoryName)} · ${escapeHtml(line.dueLabel)} · ${escapeHtml(status)}</span>
+      </div>
+      <div class="overdue-side">
+        <span class="overdue-amount">${formatMoney(line.amount, line.currency)}</span>
+        ${openBtn}
+      </div>
+    </li>
+  `
+}
+
+function fillOverdueDialog(lines) {
+  const monthTitle = formatMonthTitle(state.currentMonth)
+  const lede = document.querySelector('#overdue-lede')
+  if (lede) {
+    const count = lines.length
+    const noun = count === 1 ? 'gasto' : 'gastos'
+    lede.textContent = `${count} ${noun} de ${monthTitle} ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte.`
+  }
+  const list = document.querySelector('#overdue-list')
+  if (list) list.innerHTML = lines.map(overdueLineHtml).join('')
+}
+
+function maybeShowOverdueAlert() {
+  if (overdueAlertShown || !overdueDialog || !state) return
+  const lines = listOverduePayments(currentMonth(), state.currentMonth)
+  if (!lines.length) return
+  overdueAlertShown = true
+  fillOverdueDialog(lines)
+  if (!overdueDialog.open) overdueDialog.showModal()
+  document.querySelector('#overdue-ok')?.focus()
+}
+
+function openOverdueLine(expenseId) {
+  overdueDialog?.close()
+  if (!expenseId) return
+  setView('budget')
+  openDetails(expenseId)
 }
 
 function setFieldVisibility(names) {
@@ -1293,6 +1352,7 @@ function onSubmitCharge(event) {
     return
   }
   const charge = {
+    ...(chargeEditId ? expense.charges.find((item) => item.id === chargeEditId) || {} : {}),
     id: chargeEditId ?? newId('chg'),
     name,
     amount,
@@ -1941,6 +2001,8 @@ function onAppClick(event) {
     selectRubro(button.dataset.rubro)
   } else if (action === 'create-next-month') {
     createNextMonth()
+  } else if (action === 'open-overdue') {
+    openOverdueLine(id)
   }
 }
 
@@ -1958,6 +2020,7 @@ function revealApp() {
   fatalEl.hidden = true
   appEl.hidden = false
   render()
+  maybeShowOverdueAlert()
 }
 
 function showApp() {
@@ -2208,6 +2271,15 @@ function bindEvents() {
   moveDialog?.addEventListener('click', onMoveDialogClick)
   document.querySelector('#move-cancel')?.addEventListener('click', () => moveDialog?.close())
   document.querySelector('#move-close')?.addEventListener('click', () => moveDialog?.close())
+  overdueDialog?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="open-overdue"]')
+    if (!button) return
+    event.preventDefault()
+    openOverdueLine(button.dataset.id)
+  })
+  document.querySelector('#overdue-form')?.addEventListener('submit', () => {
+    overdueDialog?.close()
+  })
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
   closeOnBackdrop(detailsDialog)
