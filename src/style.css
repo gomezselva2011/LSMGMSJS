@@ -121,7 +121,7 @@ p {
 .skip-link {
   position: absolute;
   left: 0.75rem;
-  top: -48px;
+  top: -80px;
   background: var(--ink);
   color: #fffdf8;
   padding: 0.55rem 0.85rem;
@@ -1017,19 +1017,22 @@ dialog::backdrop {
     top: 0;
     z-index: 40;
     width: auto;
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 0.45rem;
     background: color-mix(in srgb, var(--paper) 90%, white);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--line);
-    padding: 0.4rem calc((100vw - min(var(--app-width), calc(100% - 2rem))) / 2);
+    padding: 0.45rem calc((100vw - min(var(--app-width), calc(100% - 2rem))) / 2) 0.5rem;
     margin: 0;
   }
 
   .month-nav {
-    flex: 1 1 12rem;
+    order: 1;
+    flex: 1 1 auto;
+    max-width: calc(100% - 9.75rem);
     min-width: 0;
     justify-content: space-between;
   }
@@ -1038,11 +1041,22 @@ dialog::backdrop {
     min-width: 0;
   }
 
-  .cta-wrap,
-  .month-persist {
+  .cta-wrap {
+    order: 2;
     width: auto;
-    flex: 0 1 auto;
-    justify-content: flex-end;
+    flex: 0 0 auto;
+    justify-items: stretch;
+  }
+
+  .month-persist {
+    order: 3;
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .month-persist .btn {
+    flex: 1;
   }
 
   .stat-income .stat-hint,
@@ -1112,10 +1126,16 @@ dialog::backdrop {
     width: 100%;
   }
 
-  .cta-wrap .btn,
-  .month-persist .btn {
+  .cta-wrap .btn {
     width: auto;
     min-width: 7.5rem;
+    padding-inline: 0.85rem;
+  }
+
+  .month-persist .btn {
+    flex: 1;
+    width: auto;
+    min-width: 0;
     padding-inline: 0.85rem;
   }
 }
