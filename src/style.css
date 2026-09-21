@@ -1853,8 +1853,60 @@ dialog::backdrop {
   text-align: right;
 }
 
+.field .field-hint {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+
+.rubro-mark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.2rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--paper-deep);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.rank-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.rank-n {
+  flex: none;
+  width: 1.7rem;
+  font-family: var(--font-serif);
+  font-weight: 680;
+  font-size: 1.25rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.rank-hint {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
 .analytics-class-note {
   margin: 0 0 0.35rem;
+}
+
+.mode-tabs {
+  flex-wrap: wrap;
+}
+
+.mode-tabs .view-tab {
+  min-width: 6.8rem;
+  flex: 1;
 }
 
 @keyframes boot-rise {

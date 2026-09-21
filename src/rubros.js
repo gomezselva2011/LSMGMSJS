@@ -124,7 +124,7 @@ export function isKnownRubro(id) {
 
 export function rubroMeta(id) {
   const meta = RUBRO_BY_ID.get(id) ?? NONE_META
-  return { ...meta, label: meta.name }
+  return { ...meta, label: meta.label ?? meta.name }
 }
 
 function inferRubroFromName(name) {
@@ -267,13 +267,21 @@ export function summarizeRubros(month) {
   const breakdown = buildRubroBreakdown(month)
   const items = breakdown.groups
     .filter((group) => group.id !== RUBRO_NONE)
-    .map((group) => ({
-      id: group.id,
-      label: group.name,
-      usd: group.usd ?? 0,
-      pct: group.pct,
-    }))
-  return { items, totalUsd: breakdown.totalUsd, rateOk: breakdown.rateOk, ok: breakdown.rateOk }
+    .map((group, index) => {
+      const meta = rubroMeta(group.id)
+      return {
+        id: group.id,
+        name: meta.name,
+        label: meta.label,
+        hint: meta.hint,
+        color: meta.color,
+        usd: group.usd ?? 0,
+        pct: group.pct == null ? null : Math.round(group.pct),
+        rank: index + 1,
+        count: group.lines.length,
+      }
+    })
+  return { items, totalUsd: breakdown.totalUsd, expensesUsd: breakdown.totalUsd, rateOk: breakdown.rateOk, ok: breakdown.rateOk }
 }
 
 export function rubroUsd(entry, rubroId) {

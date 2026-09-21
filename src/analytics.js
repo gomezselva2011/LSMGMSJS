@@ -770,27 +770,238 @@ function rubroTable(entries, currentKey) {
   `
 }
 
-function rubroView(entries, currentKey) {
-  const note =
-    entries.length < 2
-      ? `<p class="chart-caption analytics-class-note">Con un solo mes ves el ranking. ${escapeHtml(
-          formatCreateNextLabel(entries[0]?.key ?? '2026-10'),
-        )} en Presupuesto agrega la segunda columna.</p>`
-      : ''
+function polar(cx, cy, r, angleDeg) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+}
+
+function pieSlicePath(cx, cy, r, startAngle, endAngle) {
+  const sweep = endAngle - startAngle
+  if (sweep >= 359.999) {
+    return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx} ${cy + r} A ${r} ${r} 0 1 1 ${cx} ${cy - r} Z`
+  }
+  const start = polar(cx, cy, r, endAngle)
+  const end = polar(cx, cy, r, startAngle)
+  const large = sweep > 180 ? 1 : 0
+  return `M ${cx} ${cy} L ${end.x.toFixed(3)} ${end.y.toFixed(3)} A ${r} ${r} 0 ${large} 0 ${start.x.toFixed(
+    3,
+  )} ${start.y.toFixed(3)} Z`
+}
+
+function pieSvg(slices, selectedId, monthLabel) {
+  const cx = 140
+  const cy = 140
+  const radius = 118
+  const total = slices.reduce((sum, slice) => sum + slice.usd, 0)
+  const desc = slices
+    .map((slice) => `${slice.name} ${formatMoney(slice.usd, 'USD')} (${slice.pctLabel})`)
+    .join('. ')
+  let angle = 0
+  const paths = slices
+    .map((slice) => {
+      const sweep = total ? (slice.usd / total) * 360 : 0
+      const start = angle
+      const end = angle + sweep
+      angle = end
+      const mid = start + sweep / 2
+      const selected = slice.id === selectedId
+      const explode = selected ? 7 : 0
+      const offset = polar(0, 0, explode, mid)
+      const labelPos = polar(cx, cy, selected ? 78 : 72, mid)
+      const showLabel = sweep >= 28
+      return `
+        <g transform="translate(${offset.x.toFixed(2)} ${offset.y.toFixed(2)})">
+          <path
+            class="pie-slice${selected ? ' is-selected' : ''}"
+            d="${pieSlicePath(cx, cy, radius, start, end)}"
+            fill="${slice.color}"
+            role="button"
+            tabindex="0"
+            data-action="select-rubro"
+            data-rubro="${escapeHtml(slice.id)}"
+            data-kind="slice"
+            aria-pressed="${selected}"
+            aria-label="${escapeHtml(
+              `${slice.name}, ${formatMoney(slice.usd, 'USD')}, ${slice.pctLabel} del pastel`,
+            )}"
+          ></path>
+          ${
+            showLabel
+              ? `<text class="pie-slice-label" x="${labelPos.x.toFixed(1)}" y="${labelPos.y.toFixed(
+                  1,
+                )}" text-anchor="middle" dominant-baseline="middle">${escapeHtml(slice.pctLabel)}</text>`
+              : ''
+          }
+        </g>
+      `
+    })
+    .join('')
+
+  return `
+    <svg
+      class="pie-svg"
+      viewBox="0 0 280 280"
+      role="group"
+      aria-label="${escapeHtml(`Pastel de gastos por rubro de ${monthLabel}. ${desc}`)}"
+    >
+      ${paths}
+    </svg>
+  `
+}
+
+function rubroLegend(groups, selectedId) {
+  const items = groups
+    .map((group) => {
+      const selected = group.id === selectedId
+      const amount = group.usd == null ? 'Sin tasa' : formatMoney(group.usd, 'USD')
+      return `
+        <button
+          type="button"
+          class="pie-legend-btn${selected ? ' is-selected' : ''}"
+          data-action="select-rubro"
+          data-rubro="${escapeHtml(group.id)}"
+          data-kind="legend"
+          aria-pressed="${selected}"
+        >
+          <span class="legend-swatch pie-swatch" style="background:${group.color}"></span>
+          <span class="pie-legend-name">${escapeHtml(group.name)}</span>
+          <span class="pie-legend-pct">${escapeHtml(group.pctLabel)}</span>
+          <span class="pie-legend-amt">${escapeHtml(amount)}</span>
+        </button>
+      `
+    })
+    .join('')
+  return `<div class="pie-legend" role="list">${items}</div>`
+}
+
+function rubroDetail(breakdown, selectedId, monthKey) {
+  if (!selectedId) {
+    return `
+      <div class="empty empty-block rubro-detail" id="rubro-detalle">
+        <p>
+          Elige un rubro en el pastel o en la leyenda para ver las partidas, la casa, el porcentaje
+          del pastel y los dólares con la tasa de este mes.
+        </p>
+      </div>
+    `
+  }
+
+  const group = breakdown.groups.find((item) => item.id === selectedId)
+  const meta = rubroMeta(selectedId)
+  if (!group) {
+    return `
+      <section class="rubro-detail" id="rubro-detalle" aria-live="polite">
+        <h3 id="rubro-detalle-title" tabindex="-1">${escapeHtml(meta.name)}</h3>
+        <p>Este mes no tiene partidas en ${escapeHtml(meta.name)}.</p>
+      </section>
+    `
+  }
+
+  const amount = group.usd == null ? 'Sin tasa' : formatMoney(group.usd, 'USD')
+  const rows = group.lines
+    .map((line) => {
+      const usd = line.usd == null ? 'Sin tasa' : formatMoney(line.usd, 'USD')
+      return `
+        <tr>
+          <th scope="row">${escapeHtml(line.name)}</th>
+          <td>${escapeHtml(line.categoryName)}</td>
+          <td>${escapeHtml(formatDueDay(line.dueDay, monthKey))}</td>
+          <td>${escapeHtml(formatMoney(line.amount, line.currency))}</td>
+          <td>${escapeHtml(usd)}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  return `
+    <section class="rubro-detail" id="rubro-detalle" aria-live="polite">
+      <div class="rubro-detail-head">
+        <span class="legend-swatch pie-swatch" style="background:${group.color}"></span>
+        <div>
+          <h3 id="rubro-detalle-title" tabindex="-1">${escapeHtml(group.name)}</h3>
+          <p>
+            ${escapeHtml(amount)} · ${escapeHtml(group.pctLabel)} del pastel
+            ${
+              breakdown.rateOk
+                ? ` · tasa ${escapeHtml(breakdown.rateLabel)} C$ por 1 USD`
+                : ''
+            }
+          </p>
+        </div>
+      </div>
+      <p class="chart-caption">
+        Cada fila es una partida del presupuesto. Los subgastos no inflan este total: el mes cuenta
+        solo el monto de la línea.
+      </p>
+      <div class="compare-wrap">
+        <table class="compare-table rubro-lines">
+          <caption>Partidas de ${escapeHtml(group.name)}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Partida</th>
+              <th scope="col">Casa / categoría</th>
+              <th scope="col">Día</th>
+              <th scope="col">Monto</th>
+              <th scope="col">En USD</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `
+}
+
+function rubroPie(month, monthKey, selectedRubroId) {
+  const title = formatMonthTitle(monthKey)
+  const breakdown = buildRubroBreakdown(month)
+  if (!breakdown.rateOk) {
+    return `
+      <div class="empty empty-block">
+        <p>Falta una tasa válida en ${escapeHtml(title)} para armar el pastel en dólares.</p>
+      </div>
+    `
+  }
+  if (!breakdown.groups.length) {
+    return `
+      <div class="empty empty-block">
+        <p>No hay gastos en ${escapeHtml(title)} para armar el pastel.</p>
+      </div>
+    `
+  }
+  const pie = breakdown.slices.length
+    ? pieSvg(breakdown.slices, selectedRubroId, title)
+    : `<div class="empty empty-block"><p>Todas las partidas de ${escapeHtml(
+        title,
+      )} están en cero. El pastel aparece cuando hay montos.</p></div>`
+  const totalLabel = formatMoney(breakdown.totalUsd ?? 0, 'USD')
+  return `
+    <div class="pie-layout">
+      <div class="pie-chart-wrap">
+        ${pie}
+        <p class="pie-total">Gastos ${escapeHtml(totalLabel)}</p>
+      </div>
+      ${rubroLegend(breakdown.groups, selectedRubroId)}
+    </div>
+    ${rubroDetail(breakdown, selectedRubroId, monthKey)}
+  `
+}
+
+function rubroView(entries, currentKey, month, selectedRubroId) {
   return `
     <section class="chart-card" aria-labelledby="rubro-title">
       <div class="chart-head">
         <div>
           <h2 id="rubro-title">Por rubro</h2>
           <p class="chart-caption">
-            Tipos de gasto entre las dos casas, del más fuerte al más suave. Crédito y camionetas
-            suelen ir arriba; vivienda junta hipoteca San Andrés y renta Praderas. Dólares con la
-            tasa de cada mes; el total de la partida, no los subgastos.
+            Pastel de ${escapeHtml(formatMonthTitle(currentKey ?? entries[0]?.key ?? '2026-10'))}:
+            vivienda (hipoteca y renta), camionetas, crédito, comida, escuelas, iglesia, familia y
+            servicios. Dólares con la tasa de este mes. Pulsa un sector o un rubro de la leyenda
+            para ver las partidas. Los subgastos no inflan el total.
           </p>
         </div>
       </div>
-      ${note}
-      ${rubroRankList(entries, currentKey)}
+      ${rubroPie(month, currentKey ?? entries[0]?.key, selectedRubroId)}
       ${rubroTable(entries, currentKey)}
     </section>
   `
@@ -798,14 +1009,15 @@ function rubroView(entries, currentKey) {
 
 export function analyticsHtml(
   state,
-  { mode = MODE_TOTALS, currentKey, compareFrom, compareTo } = {},
+  { mode = MODE_TOTALS, currentKey, selectedRubroId, compareFrom, compareTo } = {},
 ) {
   const entries = buildMonthEntries(state)
   const insights = buildInsights(entries, currentKey)
   const current = entries.find((entry) => entry.key === currentKey) ?? entries[0]
+  const month = state?.months?.[currentKey] ?? state?.months?.[current?.key]
   const view =
     mode === MODE_RUBRO
-      ? rubroView(entries, currentKey)
+      ? rubroView(entries, currentKey, month, selectedRubroId)
       : mode === MODE_CLASSIFICATION
         ? classificationView(entries)
         : totalsView(entries)
