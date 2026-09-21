@@ -988,21 +988,28 @@ function rubroPie(month, monthKey, selectedRubroId) {
 }
 
 function rubroView(entries, currentKey, month, selectedRubroId) {
+  const note =
+    entries.length < 2
+      ? `<p class="chart-caption analytics-class-note">Con un solo mes ves el ranking. ${escapeHtml(
+          formatCreateNextLabel(entries[0]?.key ?? '2026-10'),
+        )} en Presupuesto agrega la segunda columna.</p>`
+      : ''
   return `
     <section class="chart-card" aria-labelledby="rubro-title">
       <div class="chart-head">
         <div>
           <h2 id="rubro-title">Por rubro</h2>
           <p class="chart-caption">
-            Pastel de ${escapeHtml(formatMonthTitle(currentKey ?? entries[0]?.key ?? '2026-10'))}:
-            vivienda (hipoteca y renta), camionetas, crédito, comida, escuelas, iglesia, familia y
-            servicios. Dólares con la tasa de este mes. Pulsa un sector o un rubro de la leyenda
-            para ver las partidas. Los subgastos no inflan el total.
+            Tipos de gasto entre las dos casas, del más fuerte al más suave. Crédito y camionetas
+            suelen ir arriba; vivienda junta hipoteca San Andrés y renta Praderas. Dólares con la
+            tasa de cada mes; el total de la partida, no los subgastos.
           </p>
         </div>
       </div>
-      ${rubroPie(month, currentKey ?? entries[0]?.key, selectedRubroId)}
+      ${note}
+      ${rubroRankList(entries, currentKey)}
       ${rubroTable(entries, currentKey)}
+      ${rubroPie(month, currentKey ?? entries[0]?.key, selectedRubroId)}
     </section>
   `
 }
