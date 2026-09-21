@@ -2,6 +2,9 @@
 # Reusa el túnel público si ya está vivo.
 # NUNCA lances otro `cloudflared tunnel --url` mientras exista uno:
 # cada restart de un quick tunnel inventa un hostname trycloudflare NUEVO.
+# Si el pid vive pero Cloudflare ya olvidó el túnel (NXDOMAIN +
+# "Tunnel not found"), no abras un segundo: el keepalive mata ESE pid
+# y arranca el recambio.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
