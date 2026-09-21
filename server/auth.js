@@ -125,7 +125,14 @@ function sessionCookie(token, maxAgeSeconds) {
     'SameSite=Lax',
     `Max-Age=${maxAgeSeconds}`,
   ]
+  if (maxAgeSeconds <= 0) {
+    parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT')
+  }
   return parts.join('; ')
+}
+
+function isLogoutPath(pathname) {
+  return pathname === '/api/logout' || pathname === '/api/auth/logout'
 }
 
 function pathnameOf(req) {
@@ -250,8 +257,8 @@ export function createAuthStore(options = {}) {
           changed = true
         }
       } else {
-        if (existing.role !== ROLE_ADMIN) {
-          existing.role = ROLE_ADMIN
+        if (existing.role !== seed.role) {
+          existing.role = seed.role
           changed = true
         }
         if (existing.name !== seed.name) {
@@ -486,7 +493,7 @@ export async function handleAuthRequest(req, res, next, store) {
 
       const user = store.userFromRequest(req)
 
-      if (req.method === 'POST' && pathname === '/api/auth/logout') {
+      if (req.method === 'POST' && isLogoutPath(pathname)) {
         const token = parseCookies(req.headers.cookie)[COOKIE_NAME]
         await store.dropSession(token)
         res.setHeader('Set-Cookie', sessionCookie('', 0))
