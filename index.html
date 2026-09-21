@@ -159,11 +159,12 @@
                 <p>
                   Cada casa puede ir a <strong>media fila</strong> o <strong>fila completa</strong>.
                   Arrastra el encabezado de la categoría para reordenarlas, por ejemplo las dos casas
-                  juntas. Cada partida se edita o se quita. Arrástrala a otra categoría para
-                  reclasificarla; en el teléfono usa <strong>Mover a…</strong>. En
-                  <strong>Ver detalles</strong> anotas la cuenta, la mensualidad y los subgastos. El
-                  mes cuenta solo el monto de la línea; los subgastos viajan con la partida y no se
-                  suman otra vez al hogar.
+                  juntas. Cada partida se edita o se quita. El <strong>rubro</strong> agrupa el mismo
+                  tipo de vida entre las dos casas (vivienda, camionetas, comida) y se lee en
+                  Analítica. Arrástrala a otra categoría para reclasificarla; en el teléfono usa
+                  <strong>Mover a…</strong>. En <strong>Ver detalles</strong> anotas la cuenta, la
+                  mensualidad y los subgastos. El mes cuenta solo el monto de la línea; los subgastos
+                  viajan con la partida y no se suman otra vez al hogar.
                 </p>
               </div>
               <div class="section-actions">
@@ -216,6 +217,14 @@
         <label class="field" data-field="category">
           <span>Categoría</span>
           <select id="field-category" name="categoryId"></select>
+        </label>
+
+        <label class="field" data-field="rubro">
+          <span>Rubro</span>
+          <select id="field-rubro" name="rubro"></select>
+          <small class="field-hint" id="rubro-hint">
+            Tipo de gasto entre las dos casas: vivienda, camionetas, comida, crédito…
+          </small>
         </label>
 
         <label class="field" data-field="dueDay">

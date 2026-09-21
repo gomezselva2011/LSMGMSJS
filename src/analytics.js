@@ -6,14 +6,24 @@ import {
 import {
   escapeHtml,
   formatCreateNextLabel,
+  formatDueDay,
   formatMoney,
   formatMonthLabel,
   formatMonthTitle,
 } from './format.js'
 import { categoryTotalUsd, formatRate, isValidRate, monthTotals } from './money.js'
+import { monthOverMonthHtml } from './mom.js'
+import { buildRubroBreakdown, rubroMeta, rubroUsd, summarizeRubros } from './rubros.js'
 
 export const MODE_TOTALS = 'totals'
 export const MODE_CLASSIFICATION = 'classification'
+export const MODE_RUBRO = 'rubro'
+
+export function parseAnalyticsMode(value) {
+  if (value === MODE_CLASSIFICATION) return MODE_CLASSIFICATION
+  if (value === MODE_RUBRO) return MODE_RUBRO
+  return MODE_TOTALS
+}
 
 const HOUSE_PRIORITY = [CATEGORY_SAN_ANDRES, CATEGORY_PRADERAS, CATEGORY_OTROS]
 const HOUSE_FALLBACK = {
@@ -43,6 +53,7 @@ export function buildMonthEntries(state) {
       name: category.name,
       usd: categoryTotalUsd(month, category.id),
     }))
+    const rubros = summarizeRubros(month)
     return {
       key,
       label: formatMonthLabel(key),
@@ -50,6 +61,7 @@ export function buildMonthEntries(state) {
       rate: month?.exchangeRate,
       totals,
       categories,
+      rubros,
     }
   })
 }
@@ -100,31 +112,29 @@ function insightBiggest(entries, currentKey) {
   if (!current) {
     const broken = entries[0]
     return {
-      title: 'La categoría que más pesa',
+      title: 'El rubro que más pesa',
       body: broken
         ? `Falta una tasa válida en ${broken.title} para convertir C$ y $ al mismo dólar.`
-        : 'No hay un mes guardado para leer las categorías.',
+        : 'No hay un mes guardado para leer los tipos de gasto.',
       tone: 'warn',
     }
   }
   const expenses = current.totals.expensesUsd
-  const ranked = current.categories
-    .filter((category) => category.usd != null)
-    .sort((a, b) => b.usd - a.usd)
+  const ranked = current.rubros?.items ?? []
   const top = ranked[0]
   if (!top || !expenses) {
     return {
-      title: 'La categoría que más pesa',
+      title: 'El rubro que más pesa',
       body: `${current.label} no tiene gastos anotados. Añádelos en Presupuesto; el mes cuenta solo el monto de cada partida.`,
       tone: 'empty',
     }
   }
   const pct = sharePct(top.usd, expenses)
   return {
-    title: 'La categoría que más pesa',
-    body: `En ${current.title}, ${top.name} se lleva ${formatMoney(top.usd, 'USD')}${
+    title: 'El rubro que más pesa',
+    body: `En ${current.title}, ${top.label} se lleva ${formatMoney(top.usd, 'USD')}${
       pct == null ? '' : ` (${pct}% de los gastos)`
-    }. Los subgastos no inflan este total: solo descuentan de su partida.`,
+    }. Agrupa las dos casas; los subgastos no inflan este total.`,
     tone: 'default',
   }
 }
@@ -297,17 +307,19 @@ function insightCards(insights) {
   `
 }
 
+function modeTab(mode, id, label) {
+  const current = mode === id
+  return `<button type="button" class="view-tab${
+    current ? ' is-current' : ''
+  }" data-action="analytics-mode" data-mode="${id}" aria-pressed="${current}">${label}</button>`
+}
+
 function modeTabs(mode) {
-  const totals = mode === MODE_CLASSIFICATION ? '' : ' is-current'
-  const klass = mode === MODE_CLASSIFICATION ? ' is-current' : ''
   return `
     <div class="mode-tabs" role="group" aria-label="Cómo ver la analítica">
-      <button type="button" class="view-tab${totals}" data-action="analytics-mode" data-mode="${MODE_TOTALS}" aria-pressed="${
-        mode !== MODE_CLASSIFICATION
-      }">Totales</button>
-      <button type="button" class="view-tab${klass}" data-action="analytics-mode" data-mode="${MODE_CLASSIFICATION}" aria-pressed="${
-        mode === MODE_CLASSIFICATION
-      }">Por clasificación</button>
+      ${modeTab(mode, MODE_TOTALS, 'Totales')}
+      ${modeTab(mode, MODE_CLASSIFICATION, 'Por casa')}
+      ${modeTab(mode, MODE_RUBRO, 'Por rubro')}
     </div>
   `
 }
@@ -614,7 +626,7 @@ function classificationView(entries) {
     <section class="chart-card" aria-labelledby="class-title">
       <div class="chart-head">
         <div>
-          <h2 id="class-title">Por clasificación</h2>
+          <h2 id="class-title">Por casa</h2>
           <p class="chart-caption">
             Casa San Andrés, Casa Praderas de Sandino, Otros y las categorías que ustedes crearon.
             Montos en dólares con la tasa de cada mes; el total de la partida, no los subgastos.
@@ -628,18 +640,184 @@ function classificationView(entries) {
   `
 }
 
-export function analyticsHtml(state, { mode = MODE_TOTALS, currentKey } = {}) {
+
+function unionRubros(entries, currentKey) {
+  const ids = new Set()
+  for (const entry of entries) {
+    for (const item of entry.rubros?.items ?? []) ids.add(item.id)
+  }
+  const current = entries.find((entry) => entry.key === currentKey) ?? entries.at(-1)
+  const order = (current?.rubros?.items ?? []).map((item) => item.id)
+  const rest = [...ids].filter((id) => !order.includes(id))
+  return [...order, ...rest].map((id) => rubroMeta(id))
+}
+
+function amountForRubro(entry, rubroId) {
+  if (!entry?.totals?.ok) return null
+  return rubroUsd(entry, rubroId)
+}
+
+function rubroRankList(entries, currentKey) {
+  const rubros = unionRubros(entries, currentKey)
+  if (!rubros.length) {
+    return `<div class="empty empty-block"><p>No hay rubros para graficar. Asigna un tipo de gasto al editar la partida.</p></div>`
+  }
+  const allValues = rubros.flatMap((rubro) =>
+    entries.map((entry) => amountForRubro(entry, rubro.id)).filter((value) => value != null),
+  )
+  const max = Math.max(1, ...allValues.map((value) => Math.abs(value)))
+  const monthLegend = entries
+    .map((entry, index) => {
+      const texture = index === 0 ? 'liso' : 'rayas'
+      return `<span class="legend-item"><span class="legend-swatch is-m${index % 4}"></span> ${escapeHtml(
+        entry.label,
+      )} (${texture})</span>`
+    })
+    .join('')
+
+  const rows = rubros
+    .map((rubro, rankIndex) => {
+      const color = rubro.color
+      const bars = entries
+        .map((entry, index) => {
+          const usd = amountForRubro(entry, rubro.id)
+          if (usd == null) {
+            return `
+              <div class="hbar">
+                <span class="hbar-label">${escapeHtml(entry.label)}</span>
+                <div class="hbar-track"><span class="hbar-fill is-miss" style="width:8px"></span></div>
+                <span class="hbar-value">Sin tasa</span>
+              </div>
+            `
+          }
+          const width = Math.max(usd === 0 ? 0 : 4, Math.round((Math.abs(usd) / max) * 100))
+          const expenses = entry.totals.ok ? entry.totals.expensesUsd : 0
+          const pct = sharePct(usd, expenses)
+          const pctLabel = pct == null ? '' : ` · ${pct}%`
+          return `
+            <div class="hbar">
+              <span class="hbar-label">${escapeHtml(entry.label)}</span>
+              <div class="hbar-track">
+                <span class="hbar-fill is-m${index % 4}" style="width:${width}%;--bar:${color}"></span>
+              </div>
+              <span class="hbar-value">${escapeHtml(formatMoney(usd, 'USD'))}${escapeHtml(pctLabel)}</span>
+            </div>
+          `
+        })
+        .join('')
+      return `
+        <article class="class-row rank-row" data-rubro="${escapeHtml(rubro.id)}">
+          <div class="class-row-head rank-head">
+            <span class="rank-n" aria-hidden="true">${rankIndex + 1}</span>
+            <div>
+              <h3>${escapeHtml(rubro.label)}</h3>
+              <p class="rank-hint">${escapeHtml(rubro.hint)}</p>
+            </div>
+          </div>
+          ${bars}
+        </article>
+      `
+    })
+    .join('')
+
+  return `
+    <div class="chart-legend">${monthLegend}</div>
+    <div class="hbar-list rank-list" id="rubro-ranking">${rows}</div>
+  `
+}
+
+function rubroTable(entries, currentKey) {
+  const rubros = unionRubros(entries, currentKey)
+  if (!rubros.length) {
+    return `<div class="empty empty-block"><p>No hay rubros en los meses guardados.</p></div>`
+  }
+  const showDelta = comparable(entries).length >= 2
+  const ok = comparable(entries)
+  const prev = ok.length >= 2 ? ok[ok.length - 2] : null
+  const next = ok.length >= 2 ? ok[ok.length - 1] : null
+  const head = entries.map((entry) => `<th scope="col">${escapeHtml(entry.label)}</th>`).join('')
+  const rows = rubros
+    .map((rubro, index) => {
+      const cells = entries
+        .map((entry) => `<td>${escapeHtml(moneyOrDash(amountForRubro(entry, rubro.id)))}</td>`)
+        .join('')
+      const delta = showDelta
+        ? `<td class="compare-delta">${escapeHtml(
+            deltaCell(amountForRubro(next, rubro.id), amountForRubro(prev, rubro.id)),
+          )}</td>`
+        : ''
+      return `<tr><th scope="row">${index + 1}. ${escapeHtml(rubro.label)}</th>${cells}${delta}</tr>`
+    })
+    .join('')
+  return `
+    <div class="compare-wrap">
+      <table class="compare-table" id="rubro-table">
+        <caption>
+          Gastos por rubro, del más fuerte al más suave, en dólares con la tasa de cada mes.
+          Vivienda junta la hipoteca de San Andrés y la renta de Praderas. Solo el monto de la
+          partida; los subgastos no se suman otra vez.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Rubro</th>
+            ${head}
+            ${showDelta ? '<th class="compare-delta" scope="col">Cambio</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `
+}
+
+function rubroView(entries, currentKey) {
+  const note =
+    entries.length < 2
+      ? `<p class="chart-caption analytics-class-note">Con un solo mes ves el ranking. ${escapeHtml(
+          formatCreateNextLabel(entries[0]?.key ?? '2026-10'),
+        )} en Presupuesto agrega la segunda columna.</p>`
+      : ''
+  return `
+    <section class="chart-card" aria-labelledby="rubro-title">
+      <div class="chart-head">
+        <div>
+          <h2 id="rubro-title">Por rubro</h2>
+          <p class="chart-caption">
+            Tipos de gasto entre las dos casas, del más fuerte al más suave. Crédito y camionetas
+            suelen ir arriba; vivienda junta hipoteca San Andrés y renta Praderas. Dólares con la
+            tasa de cada mes; el total de la partida, no los subgastos.
+          </p>
+        </div>
+      </div>
+      ${note}
+      ${rubroRankList(entries, currentKey)}
+      ${rubroTable(entries, currentKey)}
+    </section>
+  `
+}
+
+export function analyticsHtml(
+  state,
+  { mode = MODE_TOTALS, currentKey, compareFrom, compareTo } = {},
+) {
   const entries = buildMonthEntries(state)
   const insights = buildInsights(entries, currentKey)
   const current = entries.find((entry) => entry.key === currentKey) ?? entries[0]
-  const view = mode === MODE_CLASSIFICATION ? classificationView(entries) : totalsView(entries)
+  const view =
+    mode === MODE_RUBRO
+      ? rubroView(entries, currentKey)
+      : mode === MODE_CLASSIFICATION
+        ? classificationView(entries)
+        : totalsView(entries)
   return `
     <h1 id="analytics-title" tabindex="-1">Analítica</h1>
     <p class="analytics-lede">
       Lectura de Melissa y Lenin: dos casas, dólares y córdobas. Cada mes se convierte con su
-      propia tasa. Los subgastos no se cuentan otra vez.
+      propia tasa. Los subgastos no se cuentan otra vez. El rubro agrupa el mismo tipo de vida
+      entre las dos casas.
     </p>
     ${nowStrip(current)}
+    ${monthOverMonthHtml(state, { currentKey, compareFrom, compareTo, entries })}
     ${modeTabs(mode)}
     ${insightCards(insights)}
     ${view}

@@ -37,7 +37,15 @@ import {
   normalizeCurrency,
   parseRate,
 } from './money.js'
-import { analyticsHtml, MODE_CLASSIFICATION, MODE_TOTALS } from './analytics.js'
+import { analyticsHtml, MODE_CLASSIFICATION, MODE_RUBRO, MODE_TOTALS, parseAnalyticsMode } from './analytics.js'
+import {
+  inferRubro,
+  isKnownRubro,
+  RUBRO_NONE,
+  RUBROS,
+  resolveRubro,
+  rubroMeta,
+} from './rubros.js'
 
 const bootEl = document.querySelector('#boot')
 const fatalEl = document.querySelector('#fatal')
@@ -65,6 +73,9 @@ let confirmContext = null
 let toastTimer = 0
 let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
+let compareFrom = null
+let compareTo = null
+let selectedRubroId = null
 let chargeEditId = null
 let detailsExpenseId = null
 let moveExpenseId = null
@@ -336,12 +347,17 @@ function nestedChargeRow(charge) {
 
 function ledgerRow(item, kind) {
   const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
+  const rubroId = kind === 'expense' ? resolveRubro(item) : ''
+  const rubroMark =
+    kind === 'expense' && rubroId && rubroId !== RUBRO_NONE
+      ? `<span class="rubro-mark">${escapeHtml(rubroMeta(rubroId).name)}</span>`
+      : ''
   const detailsMark =
     kind === 'expense' && !detailsAreEmpty(item.details)
       ? '<span class="details-mark">Con detalles</span>'
       : ''
   const remaining = kind === 'expense' ? remainingMarkup(item) : ''
-  const nameInner = `${escapeHtml(item.name)}${badge}${detailsMark}`
+  const nameInner = `${escapeHtml(item.name)}${badge}${rubroMark}${detailsMark}`
   const name =
     kind === 'expense'
       ? `<button type="button" class="ledger-name" data-action="open-details" data-id="${item.id}">${nameInner}</button>`
@@ -521,7 +537,28 @@ function renderViewTabs() {
 function renderAnalytics() {
   const el = document.querySelector('#analytics')
   if (!el) return
-  el.innerHTML = analyticsHtml(state, { mode: analyticsMode, currentKey: state.currentMonth })
+  const active = document.activeElement
+  const restoreRubro =
+    el.contains(active) && active?.dataset?.action === 'select-rubro' ? active.dataset.rubro : null
+  const restoreKind = restoreRubro ? active.dataset.kind : null
+  el.innerHTML = analyticsHtml(state, {
+    mode: analyticsMode,
+    currentKey: state.currentMonth,
+    selectedRubroId,
+    compareFrom,
+    compareTo,
+  })
+  if (restoreRubro) {
+    const next = el.querySelector(
+      `[data-action="select-rubro"][data-rubro="${restoreRubro}"][data-kind="${restoreKind ?? 'legend'}"]`,
+    )
+    next?.focus()
+  }
+}
+
+function selectRubro(rubroId) {
+  selectedRubroId = rubroId || null
+  renderAnalytics()
 }
 
 function render() {
@@ -542,6 +579,51 @@ function setFieldVisibility(names) {
   document.querySelectorAll('[data-field]').forEach((el) => {
     el.classList.toggle('hidden', !names.includes(el.dataset.field))
   })
+}
+
+function fillRubroSelect(selectedId) {
+  const select = document.querySelector('#field-rubro')
+  if (!select) return
+  const current = selectedId === RUBRO_NONE || isKnownRubro(selectedId) ? selectedId : ''
+  select.innerHTML = [
+    '<option value="">Según el nombre</option>',
+    ...RUBROS.map(
+      (rubro) =>
+        `<option value="${escapeHtml(rubro.id)}" ${rubro.id === current ? 'selected' : ''}>${escapeHtml(
+          rubro.name,
+        )}</option>`,
+    ),
+    `<option value="${RUBRO_NONE}" ${current === RUBRO_NONE ? 'selected' : ''}>Sin rubro</option>`,
+  ].join('')
+}
+
+function readRubro(name) {
+  const selected = document.querySelector('#field-rubro')?.value ?? ''
+  if (selected === RUBRO_NONE) return RUBRO_NONE
+  if (isKnownRubro(selected)) return selected
+  return inferRubro({ name }) || ''
+}
+
+function syncRubroHint() {
+  const hint = document.querySelector('#rubro-hint')
+  if (!hint) return
+  const selected = document.querySelector('#field-rubro')?.value ?? ''
+  const name = document.querySelector('#field-name')?.value ?? ''
+  if (selected === RUBRO_NONE) {
+    hint.textContent = 'Esta partida no entra en el ranking de rubros hasta que le asignes un tipo.'
+    return
+  }
+  if (isKnownRubro(selected)) {
+    hint.textContent = rubroMeta(selected).hint
+    return
+  }
+  const inferred = inferRubro({ name })
+  if (inferred) {
+    const meta = rubroMeta(inferred)
+    hint.textContent = `Según el nombre: ${meta.name}. ${meta.hint}`
+    return
+  }
+  hint.textContent = 'Tipo de gasto entre las dos casas: vivienda, camionetas, comida, crédito…'
 }
 
 function fillCategorySelect(selectedId) {
@@ -609,8 +691,9 @@ function openForm(context) {
     if (currencySelect) currencySelect.value = normalizeCurrency(context.item?.currency)
   } else if (context.type === 'expense') {
     title.textContent = context.item ? 'Editar gasto' : 'Añadir gasto'
-    setFieldVisibility(['amount', 'category', 'dueDay', 'isCard'])
+    setFieldVisibility(['amount', 'category', 'rubro', 'dueDay', 'isCard'])
     fillCategorySelect(context.item?.categoryId ?? context.categoryId)
+    fillRubroSelect(context.item?.rubro)
     nameInput.value = context.item?.name ?? ''
     amountInput.value = context.item ? centsToInput(context.item.amount) : ''
     dueInput.value = context.item?.dueDay ?? ''
@@ -627,6 +710,7 @@ function openForm(context) {
   }
 
   syncAmountLabel()
+  syncRubroHint()
   if (!formDialog.open) formDialog.showModal()
   nameInput.focus()
 }
@@ -861,6 +945,7 @@ function onSubmitForm(event) {
         dueDay: parseDueDay(document.querySelector('#field-due').value),
         currency: readCurrency('#field-currency'),
         isCard,
+        rubro: readRubro(name),
         charges: formContext.item?.charges ?? [],
         details: formContext.item?.details ?? emptyDetails(),
       }
@@ -1681,8 +1766,10 @@ function onAppClick(event) {
   } else if (action === 'show-view') {
     setView(view)
   } else if (action === 'analytics-mode') {
-    analyticsMode = button.dataset.mode === MODE_CLASSIFICATION ? MODE_CLASSIFICATION : MODE_TOTALS
+    analyticsMode = parseAnalyticsMode(button.dataset.mode)
     renderAnalytics()
+  } else if (action === 'select-rubro') {
+    selectRubro(button.dataset.rubro)
   } else if (action === 'create-next-month') {
     createNextMonth()
   }
@@ -1722,6 +1809,24 @@ function bindEvents() {
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
+  appEl.addEventListener('change', (event) => {
+    const select = event.target.closest?.('select[data-action]')
+    if (!select) return
+    if (select.dataset.action === 'compare-from') {
+      compareFrom = select.value
+      renderAnalytics()
+    } else if (select.dataset.action === 'compare-to') {
+      compareTo = select.value
+      renderAnalytics()
+    }
+  })
+  appEl.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const target = event.target.closest('[data-action="select-rubro"]')
+    if (!target || target.tagName === 'BUTTON') return
+    event.preventDefault()
+    selectRubro(target.dataset.rubro)
+  })
   categoryGridEl.addEventListener('dragstart', onGridDragStart)
   categoryGridEl.addEventListener('dragend', onGridDragEnd)
   categoryGridEl.addEventListener('dragover', onGridDragOver)
@@ -1752,6 +1857,10 @@ function bindEvents() {
     resetChargeForm(currentCardExpense())
   })
   document.querySelector('#field-currency')?.addEventListener('change', syncAmountLabel)
+  document.querySelector('#field-rubro')?.addEventListener('change', syncRubroHint)
+  document.querySelector('#field-name')?.addEventListener('input', () => {
+    if (formContext?.type === 'expense') syncRubroHint()
+  })
   document.querySelector('#charge-currency')?.addEventListener('change', syncChargeAmountLabel)
   const rateInput = document.querySelector('#field-rate')
   rateInput?.addEventListener('input', (event) => applyExchangeRate(event.target.value))

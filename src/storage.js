@@ -15,6 +15,7 @@ import {
   isValidRate,
   normalizeCurrency,
 } from './money.js'
+import { normalizeRubro } from './rubros.js'
 
 export function looksLikeCardName(name) {
   const text = String(name ?? '')
@@ -91,6 +92,7 @@ export function normalizeExpense(raw) {
   raw.charges = Array.isArray(raw.charges) ? raw.charges.map(normalizeCharge).filter(Boolean) : []
   raw.currency = normalizeCurrency(raw.currency)
   raw.details = normalizeDetails(raw.details)
+  normalizeRubro(raw)
   return raw
 }
 
