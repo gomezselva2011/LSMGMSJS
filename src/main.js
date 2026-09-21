@@ -1,7 +1,9 @@
 import './style.css'
-import { createOctoberSeed, SEEDED_MONTH, cloneMonth } from './seed.js'
+import { createOctoberSeed, SEEDED_MONTH } from './seed.js'
 import {
+  applyCategoryLayout,
   cardSummary,
+  cloneMonth,
   createInitialState,
   detailsAreEmpty,
   emptyDetails,
@@ -10,6 +12,7 @@ import {
   loadState,
   looksLikeCardName,
   normalizeDetails,
+  reorderCategories,
   saveState,
   storageAvailable,
 } from './storage.js'
@@ -1355,34 +1358,20 @@ function setReorderTarget(card, place, source, target) {
 
 function setCategoryLayout(id, layout) {
   const month = currentMonth()
-  const category = month.categories.find((entry) => entry.id === id)
-  const next = layout === LAYOUT_HALF ? LAYOUT_HALF : LAYOUT_FULL
-  if (!category || category.layout === next) return
-  category.layout = next
+  const category = applyCategoryLayout(month, id, layout)
+  if (!category) return
   persist()
   render()
-  showToast(next === LAYOUT_HALF ? `${category.name}: media fila` : `${category.name}: fila completa`)
+  showToast(category.layout === LAYOUT_HALF ? `${category.name}: media fila` : `${category.name}: fila completa`)
 }
 
 function reorderCategory(sourceId, targetId, place) {
   const month = currentMonth()
-  const list = month.categories
-  const from = list.findIndex((entry) => entry.id === sourceId)
-  const to = list.findIndex((entry) => entry.id === targetId)
-  if (from < 0 || to < 0 || !targetId) return false
-  const next = [...list]
-  const [moved] = next.splice(from, 1)
-  let insertAt = next.findIndex((entry) => entry.id === targetId)
-  if (insertAt < 0) return false
-  if (place === 'after') insertAt += 1
-  next.splice(insertAt, 0, moved)
-  const unchanged = next.every((entry, index) => entry.id === list[index].id)
-  if (unchanged) return false
-  month.categories = next
+  if (!reorderCategories(month, sourceId, targetId, place)) return false
   persist()
   render()
   showToast('Orden de categorías actualizado')
-  announceDnd(`Categorías: ${next.map((entry) => entry.name).join(', ')}.`)
+  announceDnd(`Categorías: ${month.categories.map((entry) => entry.name).join(', ')}.`)
   return true
 }
 

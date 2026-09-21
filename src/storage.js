@@ -6,6 +6,7 @@ import {
   CATEGORY_SAN_ANDRES,
   createOctoberSeed,
   createEmptyMonth,
+  cloneMonth as duplicateMonth,
 } from './seed.js'
 import { newId } from './format.js'
 import {
@@ -109,7 +110,11 @@ export function inferredCategoryLayout(category, index, total) {
 
 export function normalizeCategory(raw, index = 0, total = 1) {
   if (!raw || typeof raw !== 'object') return raw
-  raw.layout = normalizeLayout(raw.layout) ?? inferredCategoryLayout(raw, index, total)
+  raw.layout =
+    normalizeLayout(raw.layout) ??
+    normalizeLayout(raw.width) ??
+    inferredCategoryLayout(raw, index, total)
+  if ('width' in raw) delete raw.width
   return raw
 }
 
@@ -127,6 +132,36 @@ export function normalizeMonth(month) {
   )
   month.expenses.forEach(normalizeExpense)
   return month
+}
+
+export function cloneMonth(month) {
+  return normalizeMonth(duplicateMonth(month))
+}
+
+export function applyCategoryLayout(month, id, layout) {
+  if (!month || !Array.isArray(month.categories)) return null
+  const category = month.categories.find((entry) => entry.id === id)
+  const next = normalizeLayout(layout)
+  if (!category || !next || category.layout === next) return null
+  category.layout = next
+  return category
+}
+
+export function reorderCategories(month, sourceId, targetId, place) {
+  if (!month || !Array.isArray(month.categories)) return false
+  const list = month.categories
+  const from = list.findIndex((entry) => entry.id === sourceId)
+  if (from < 0 || !targetId) return false
+  const next = [...list]
+  const [moved] = next.splice(from, 1)
+  let insertAt = next.findIndex((entry) => entry.id === targetId)
+  if (insertAt < 0) return false
+  if (place === 'after') insertAt += 1
+  next.splice(insertAt, 0, moved)
+  const unchanged = next.every((entry, index) => entry.id === list[index].id)
+  if (unchanged) return false
+  month.categories = next
+  return true
 }
 
 export function normalizeState(state) {
