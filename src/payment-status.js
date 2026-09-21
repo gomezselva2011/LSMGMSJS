@@ -46,6 +46,28 @@ export function isDueBeforeToday(dueDay, monthKey, today = new Date()) {
   return due.getTime() < now.getTime()
 }
 
+/** Unpaid lines whose due date is today or already passed count as overdue. */
+export function isDueTodayOrPast(dueDay, monthKey, today = new Date()) {
+  const due = dueDateFromMonth(dueDay, monthKey)
+  if (!due) return false
+  const now = startOfLocalDay(today)
+  if (Number.isNaN(now.getTime())) return false
+  return due.getTime() <= now.getTime()
+}
+
+export function isPaidLine(item) {
+  return normalizePaymentStatus(item) === PAYMENT_PAID
+}
+
+export function setLinePaid(item, paid) {
+  if (!item || typeof item !== 'object') return item
+  const next = Boolean(paid)
+  item.paymentStatus = next ? PAYMENT_PAID : PAYMENT_UNPAID
+  item.paid = next
+  if (typeof item.pagado === 'boolean') item.pagado = next
+  return item
+}
+
 function ownDueDay(item) {
   const day = Number(item?.dueDay)
   return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null
@@ -58,7 +80,9 @@ function categoryName(month, categoryId) {
 
 function overdueLine({ item, expense, month, monthKey, kind, parentName, today }) {
   const dueDay = ownDueDay(item)
-  if (!dueDay || !isOutstanding(item) || !isDueBeforeToday(dueDay, monthKey, today)) return null
+  if (!dueDay || isPaidLine(item) || !isOutstanding(item) || !isDueTodayOrPast(dueDay, monthKey, today)) {
+    return null
+  }
   const status = normalizePaymentStatus(item)
   return {
     id: kind === 'charge' ? `${expense.id}:${item.id}` : expense.id,
@@ -123,7 +147,7 @@ export function formatOverdueLede(count, monthTitle) {
   const noun = n === 1 ? 'gasto' : 'gastos'
   const verb =
     n === 1
-      ? 'ya pasó su fecha y sigue sin pagar o solo se pagó en parte'
-      : 'ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte'
+      ? 'ya venció o vence hoy y sigue sin pagar o solo se pagó en parte'
+      : 'ya vencieron o vencen hoy y siguen sin pagar o solo se pagaron en parte'
   return `${n} ${noun} de ${monthTitle} ${verb}.`
 }

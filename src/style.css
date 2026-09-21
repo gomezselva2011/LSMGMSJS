@@ -965,12 +965,66 @@ p {
   border-top: 1px solid var(--line);
 }
 
+.ledger-row.has-paid {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'paid name amount actions'
+    'paid date amount actions';
+  column-gap: 0.55rem;
+}
+
 .ledger-row.has-grip {
   grid-template-columns: 1.2rem minmax(0, 1fr) auto auto;
   grid-template-areas:
     'grip name amount actions'
     'grip date amount actions';
   column-gap: 0.7rem;
+}
+
+.ledger-row.has-grip.has-paid {
+  grid-template-columns: 1.2rem auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'grip paid name amount actions'
+    'grip paid date amount actions';
+}
+
+.paid-check {
+  grid-area: paid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  margin: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.paid-check input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+  accent-color: var(--pine);
+  cursor: pointer;
+}
+
+.paid-check input:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ledger-row.is-paid .ledger-title,
+.ledger-sub-row.is-paid .ledger-sub-name {
+  text-decoration: line-through;
+  text-decoration-thickness: 0.12em;
+  text-decoration-color: var(--pine);
+  color: var(--pine);
+}
+
+.ledger-row.is-paid button.ledger-name:hover .ledger-title {
+  text-decoration: line-through;
+  text-decoration-thickness: 0.12em;
+  text-decoration-color: var(--pine);
 }
 
 .ledger-drag {
@@ -1030,6 +1084,9 @@ button.ledger-name {
 
 button.ledger-name:hover {
   color: var(--terracotta-deep);
+}
+
+button.ledger-name:hover .ledger-title {
   text-decoration: underline;
   text-underline-offset: 0.18em;
 }
@@ -2120,11 +2177,26 @@ dialog::backdrop {
     padding: 0.7rem 0.1rem;
   }
 
+  .ledger-row.has-paid {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'paid name amount'
+      'paid date actions';
+    column-gap: 0.4rem;
+  }
+
   .ledger-row.has-grip {
     grid-template-columns: 1.1rem minmax(0, 1fr) auto;
     grid-template-areas:
       'grip name amount'
       'grip date actions';
+  }
+
+  .ledger-row.has-grip.has-paid {
+    grid-template-columns: 1.1rem auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'grip paid name amount'
+      'grip paid date actions';
   }
 
   .ledger-amount {
@@ -2231,6 +2303,13 @@ dialog::backdrop {
     'grip date amount add actions';
 }
 
+.ledger-row.ledger-row-main.has-grip.has-paid {
+  grid-template-columns: 1.2rem auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    'grip paid name amount add actions'
+    'grip paid date amount add actions';
+}
+
 .btn-add-sub {
   grid-area: add;
   display: inline-flex;
@@ -2273,12 +2352,17 @@ dialog::backdrop {
 }
 
 .ledger-sub-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 0.28rem 0;
-  min-height: 1.75rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  padding: 0.12rem 0;
+  min-height: var(--touch);
+}
+
+.ledger-sub-row .paid-check {
+  min-width: 2.4rem;
+  min-height: var(--touch);
 }
 
 .ledger-sub-name {
@@ -2304,9 +2388,20 @@ dialog::backdrop {
       'grip date actions add';
   }
 
+  .ledger-row.ledger-row-main.has-grip.has-paid {
+    grid-template-columns: 1.1rem auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'grip paid name amount add'
+      'grip paid date actions add';
+  }
+
   .btn-add-sub {
     justify-self: end;
     align-self: center;
+  }
+
+  .paid-check {
+    min-width: 2.6rem;
   }
 }
 

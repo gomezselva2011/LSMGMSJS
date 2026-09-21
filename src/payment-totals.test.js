@@ -8,6 +8,7 @@ import {
   splitParentPaidUnpaid,
 } from './payment-totals.js'
 import { analyticsHtml } from './analytics.js'
+import { setLinePaid } from './payment-status.js'
 
 describe('normalizePaymentStatus', () => {
   it('maps paid, partial, unpaid, and late aliases', () => {
@@ -114,6 +115,23 @@ describe('monthPaidUnpaidTotals', () => {
     assert.equal(after.paidUsd + after.unpaidUsd, before.unpaidUsd)
   })
 
+  it('counts a checkbox-paid parent in ya pagados without dropping the month total', () => {
+    const month = createOctoberSeed()
+    const budget = monthTotals(month)
+    const before = monthPaidUnpaidTotals(month)
+    const casa = month.expenses.find((item) => item.id === 'exp-sa-casa')
+    setLinePaid(casa, true)
+    const after = monthPaidUnpaidTotals(month)
+    const still = monthTotals(month)
+    assert.equal(after.paidUsd, before.paidUsd + 17200)
+    assert.equal(after.unpaidUsd, before.unpaidUsd - 17200)
+    assert.equal(still.expensesUsd, budget.expensesUsd)
+    setLinePaid(casa, false)
+    const restored = monthPaidUnpaidTotals(month)
+    assert.equal(restored.paidUsd, before.paidUsd)
+    assert.equal(restored.unpaidUsd, before.unpaidUsd)
+  })
+
   it('returns nulls when the month rate is missing', () => {
     const totals = monthPaidUnpaidTotals({ exchangeRate: 0, expenses: [{ amount: 100, currency: 'USD' }] })
     assert.equal(totals.ok, false)
@@ -139,5 +157,17 @@ describe('analyticsHtml payment cards', () => {
     assert.ok(mom < bars)
     assert.match(html, /id="analytics-paid"[^>]*>\$0\.00/)
     assert.match(html, /id="analytics-unpaid"[^>]*>\$4,981\.14/)
+  })
+
+  it('renders paid totals after a parent checkbox is marked pagado', () => {
+    const month = createOctoberSeed()
+    const casa = month.expenses.find((item) => item.id === 'exp-sa-casa')
+    setLinePaid(casa, true)
+    const html = analyticsHtml(
+      { currentMonth: '2026-10', months: { '2026-10': month } },
+      { currentKey: '2026-10' },
+    )
+    assert.match(html, /id="analytics-paid"[^>]*>\$172\.00/)
+    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,809\.14/)
   })
 })

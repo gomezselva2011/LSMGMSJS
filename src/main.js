@@ -55,8 +55,10 @@ import {
 } from './rubros.js'
 import {
   formatOverdueLede,
+  isPaidLine,
   listOverduePayments,
   paymentStatusLabel,
+  setLinePaid,
 } from './payment-status.js'
 
 const bootEl = document.querySelector('#boot')
@@ -455,9 +457,34 @@ function remainingMarkup(item) {
   return `<small class="ledger-remain">Quedan ${formatMoney(summary.disponible, summary.currency)}</small>`
 }
 
-function nestedChargeRow(charge) {
+function paidCheckbox({ expenseId, chargeId, item, name }) {
+  const paid = isPaidLine(item)
+  const chargeAttr = chargeId ? ` data-charge-id="${escapeHtml(chargeId)}"` : ''
   return `
-    <li class="ledger-sub-row" draggable="false">
+    <label class="paid-check">
+      <input
+        type="checkbox"
+        data-action="toggle-paid"
+        data-id="${escapeHtml(expenseId)}"
+        ${chargeAttr}
+        ${paid ? 'checked' : ''}
+        ${canEdit() ? '' : 'disabled'}
+        aria-label="${paid ? 'Quitar pagado de' : 'Marcar como pagado'} ${escapeHtml(name)}"
+      />
+    </label>
+  `
+}
+
+function nestedChargeRow(charge, expense) {
+  const paid = isPaidLine(charge)
+  return `
+    <li class="ledger-sub-row${paid ? ' is-paid' : ''}">
+      ${paidCheckbox({
+        expenseId: expense.id,
+        chargeId: charge.id,
+        item: charge,
+        name: charge.name,
+      })}
       <span class="ledger-sub-name">${escapeHtml(charge.name)}</span>
       <span class="ledger-sub-amount">${formatMoney(charge.amount, charge.currency)}</span>
     </li>
@@ -476,7 +503,7 @@ function ledgerRow(item, kind) {
       ? '<span class="details-mark">Con detalles</span>'
       : ''
   const remaining = kind === 'expense' ? remainingMarkup(item) : ''
-  const nameInner = `${escapeHtml(item.name)}${badge}${rubroMark}${detailsMark}`
+  const nameInner = `<span class="ledger-title">${escapeHtml(item.name)}</span>${badge}${rubroMark}${detailsMark}`
   const name =
     kind === 'expense'
       ? `<button type="button" class="ledger-name" data-action="open-details" data-id="${item.id}">${nameInner}</button>`
@@ -497,8 +524,15 @@ function ledgerRow(item, kind) {
     kind === 'expense' && canEdit()
       ? `<span class="drag-grip" aria-hidden="true" title="Arrastra a otra categoría"></span>`
       : ''
+  const paidBox =
+    kind === 'expense'
+      ? paidCheckbox({ expenseId: item.id, item, name: item.name })
+      : ''
+  const paidClass = kind === 'expense' && isPaidLine(item) ? ' is-paid' : ''
+  const paidGrid = kind === 'expense' ? ' has-paid' : ''
   const rowInner = `
       ${grip}
+      ${paidBox}
       ${name}
       <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
       <span class="ledger-amount">${formatMoney(item.amount, item.currency)}${remaining}</span>
@@ -511,18 +545,18 @@ function ledgerRow(item, kind) {
       : ''
 
   if (kind !== 'expense' || !hasSubs) {
-    return `<li class="ledger-row${kind === 'expense' ? ' ledger-drag has-grip' : ''}"${dragAttrs}>${rowInner}</li>`
+    return `<li class="ledger-row${kind === 'expense' ? ' ledger-drag has-grip' : ''}${paidClass}${paidGrid}"${dragAttrs}>${rowInner}</li>`
   }
 
   const nested = expanded
     ? `<ul class="ledger-sub" aria-label="Subgastos de ${escapeHtml(item.name)}">${charges
-        .map((charge) => nestedChargeRow(charge))
+        .map((charge) => nestedChargeRow(charge, item))
         .join('')}</ul>`
     : ''
 
   return `
     <li class="ledger-group has-subs${expanded ? ' is-expanded' : ''}">
-      <div class="ledger-row ledger-row-main ledger-drag has-grip"${dragAttrs}>
+      <div class="ledger-row ledger-row-main ledger-drag has-grip${paidClass}${paidGrid}"${dragAttrs}>
         ${rowInner}
       </div>
       ${nested}
@@ -749,7 +783,8 @@ function maybeShowOverdueAlert() {
     if (overdueAlertShown || !overdueDialog || !state) return
     const month = currentMonth()
     if (!month) return
-    const lines = listOverduePayments(month, state.currentMonth)
+    const today = new Date()
+    const lines = listOverduePayments(month, state.currentMonth, today)
     if (!lines.length) return
     overdueAlertShown = true
     fillOverdueDialog(lines)
@@ -758,6 +793,31 @@ function maybeShowOverdueAlert() {
   } catch (error) {
     console.error(error)
   }
+}
+
+function applyPaidToggle(input) {
+  if (!(input instanceof HTMLInputElement)) return
+  const month = currentMonth()
+  if (!month || !canEdit()) {
+    input.checked = !input.checked
+    return
+  }
+  const expense = month.expenses.find((item) => item.id === input.dataset.id)
+  if (!expense) return
+  const chargeId = input.dataset.chargeId
+  const target = chargeId
+    ? (expense.charges || []).find((charge) => charge.id === chargeId)
+    : expense
+  if (!target) return
+  setLinePaid(target, input.checked)
+  persist()
+  render()
+}
+
+function onTogglePaidChange(event) {
+  const input = event.target
+  if (!(input instanceof HTMLInputElement) || input.dataset.action !== 'toggle-paid') return
+  applyPaidToggle(input)
 }
 
 function openOverdueLine(expenseId) {
@@ -1300,8 +1360,14 @@ function renderCardDialog() {
         ${expense.charges
           .map(
             (charge) => `
-          <li class="ledger-row">
-            <span class="ledger-name">${escapeHtml(charge.name)}</span>
+          <li class="ledger-row has-paid${isPaidLine(charge) ? ' is-paid' : ''}">
+            ${paidCheckbox({
+              expenseId: expense.id,
+              chargeId: charge.id,
+              item: charge,
+              name: charge.name,
+            })}
+            <span class="ledger-name"><span class="ledger-title">${escapeHtml(charge.name)}</span></span>
             <span class="ledger-date">${escapeHtml(
               normalizeCurrency(charge.currency) === normalizeCurrency(expense.currency)
                 ? charge.currency === 'NIO'
@@ -1766,7 +1832,7 @@ function cancelLongPress() {
 function onExpensePointerDown(event) {
   const row = event.target.closest('.ledger-drag')
   if (!row || !categoryGridEl.contains(row)) return
-  if (event.target.closest('.row-actions, .btn-add-sub, .btn-move, a, input, select, textarea')) {
+  if (event.target.closest('.row-actions, .btn-add-sub, .btn-move, .paid-check, a, input, select, textarea')) {
     row.setAttribute('draggable', 'false')
     cancelLongPress()
     return
@@ -1989,7 +2055,9 @@ function onAppClick(event) {
   const { action, id, category, view } = button.dataset
   const month = currentMonth()
 
-  if (action === 'add-income') {
+  if (action === 'toggle-paid') {
+    return
+  } else if (action === 'add-income') {
     openForm({ type: 'income' })
   } else if (action === 'edit-income') {
     openForm({ type: 'income', item: month.incomes.find((item) => item.id === id) })
@@ -2235,6 +2303,7 @@ function bindEvents() {
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
+  document.addEventListener('change', onTogglePaidChange)
   appEl.addEventListener('change', (event) => {
     const select = event.target.closest?.('select[data-action]')
     if (!select) return

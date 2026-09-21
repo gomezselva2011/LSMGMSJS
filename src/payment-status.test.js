@@ -6,11 +6,15 @@ import {
   STATUS_PARTIAL,
   STATUS_UNPAID,
   formatOverdueLede,
+  dueDateFromMonth,
   isDueBeforeToday,
+  isDueTodayOrPast,
   isOutstanding,
+  isPaidLine,
   listOverduePayments,
   normalizePaymentStatus,
   paymentStatusLabel,
+  setLinePaid,
 } from './payment-status.js'
 
 const TODAY = new Date(2026, 8, 21)
@@ -90,8 +94,51 @@ describe('isDueBeforeToday', () => {
   })
 })
 
+describe('isDueTodayOrPast', () => {
+  it('counts today and past days, not future days, using local calendar dates', () => {
+    assert.equal(isDueTodayOrPast(10, '2026-09', TODAY), true)
+    assert.equal(isDueTodayOrPast(21, '2026-09', TODAY), true)
+    assert.equal(isDueTodayOrPast(22, '2026-09', TODAY), false)
+    assert.equal(isDueTodayOrPast(1, '2026-10', TODAY), false)
+    assert.equal(isDueTodayOrPast(31, '2026-08', TODAY), true)
+    assert.equal(isDueTodayOrPast(null, '2026-09', TODAY), false)
+  })
+
+  it('builds due dates from the month key in local time, not UTC midnight', () => {
+    const due = dueDateFromMonth(21, '2026-09')
+    assert.equal(due.getFullYear(), 2026)
+    assert.equal(due.getMonth(), 8)
+    assert.equal(due.getDate(), 21)
+  })
+})
+
+describe('setLinePaid', () => {
+  it('marks paid and unpaid on the line without dropping the amount', () => {
+    const item = { name: 'Luz', amount: 30400, paymentStatus: 'unpaid', paid: false }
+    setLinePaid(item, true)
+    assert.equal(item.paymentStatus, STATUS_PAID)
+    assert.equal(item.paid, true)
+    assert.equal(item.amount, 30400)
+    assert.equal(isPaidLine(item), true)
+    assert.equal(isOutstanding(item), false)
+    setLinePaid(item, false)
+    assert.equal(item.paymentStatus, STATUS_UNPAID)
+    assert.equal(item.paid, false)
+    assert.equal(isPaidLine(item), false)
+    assert.equal(isOutstanding(item), true)
+  })
+
+  it('overrides a leftover paid boolean so unchecking is unpaid', () => {
+    const item = { paymentStatus: 'unpaid', paid: true }
+    assert.equal(isPaidLine(item), true)
+    setLinePaid(item, false)
+    assert.equal(isPaidLine(item), false)
+    assert.equal(normalizePaymentStatus(item), STATUS_UNPAID)
+  })
+})
+
 describe('listOverduePayments', () => {
-  it('lists unpaid and partial expenses whose due date is before today', () => {
+  it('lists unpaid and partial expenses whose due date is today or already passed', () => {
     const lines = listOverduePayments(monthFixture(), '2026-09', TODAY)
     assert.deepEqual(
       lines.map((line) => line.id),
@@ -102,6 +149,41 @@ describe('listOverduePayments', () => {
     assert.equal(lines[0].categoryName, 'Otros gastos')
     assert.equal(lines[2].name, 'Luz')
     assert.equal(lines[2].dueDay, 10)
+  })
+
+  it('includes an unpaid line due today and skips paid past-due and future unpaid', () => {
+    const month = monthFixture()
+    month.expenses.push(
+      {
+        id: 'exp-hoy',
+        name: 'Internet',
+        amount: 6000,
+        categoryId: 'cat-otros',
+        dueDay: 21,
+        currency: 'USD',
+        paymentStatus: 'unpaid',
+      },
+      {
+        id: 'exp-futuro',
+        name: 'Celular',
+        amount: 4000,
+        categoryId: 'cat-otros',
+        dueDay: 28,
+        currency: 'USD',
+        paymentStatus: 'unpaid',
+      },
+    )
+    const lines = listOverduePayments(month, '2026-09', TODAY)
+    assert.equal(lines.some((line) => line.name === 'Internet'), true)
+    assert.equal(lines.some((line) => line.name === 'Celular'), false)
+    assert.equal(lines.some((line) => line.name === 'Casa'), false)
+    const casa = month.expenses.find((item) => item.id === 'exp-casa')
+    setLinePaid(casa, false)
+    const afterUncheck = listOverduePayments(month, '2026-09', TODAY)
+    assert.equal(afterUncheck.some((line) => line.name === 'Casa'), true)
+    setLinePaid(month.expenses.find((item) => item.id === 'exp-luz'), true)
+    const afterPay = listOverduePayments(month, '2026-09', TODAY)
+    assert.equal(afterPay.some((line) => line.name === 'Luz'), false)
   })
 
   it('omits paid lines, lines without a due day, and future months', () => {
@@ -133,11 +215,11 @@ describe('formatOverdueLede', () => {
   it('keeps singular and plural nouns defined', () => {
     assert.equal(
       formatOverdueLede(1, 'septiembre 2026'),
-      '1 gasto de septiembre 2026 ya pasó su fecha y sigue sin pagar o solo se pagó en parte.',
+      '1 gasto de septiembre 2026 ya venció o vence hoy y sigue sin pagar o solo se pagó en parte.',
     )
     assert.equal(
       formatOverdueLede(3, 'agosto 2026'),
-      '3 gastos de agosto 2026 ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte.',
+      '3 gastos de agosto 2026 ya vencieron o vencen hoy y siguen sin pagar o solo se pagaron en parte.',
     )
   })
 })
