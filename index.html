@@ -45,10 +45,26 @@
 
       <div class="top-dock">
         <div class="top-dock-inner">
-          <div class="brand">
-            <p class="eyebrow">Gastos del hogar</p>
-            <p class="household">Melissa y Lenin</p>
-            <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
+          <div class="brand-block">
+            <div class="brand">
+              <p class="eyebrow">Gastos del hogar</p>
+              <p class="household">Melissa y Lenin</p>
+              <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
+            </div>
+            <nav class="view-tabs" aria-label="Vistas del hogar" id="view-tabs">
+              <button
+                type="button"
+                class="view-tab is-current"
+                data-action="show-view"
+                data-view="budget"
+                aria-current="page"
+              >
+                Presupuesto
+              </button>
+              <button type="button" class="view-tab" data-action="show-view" data-view="analytics">
+                Analítica
+              </button>
+            </nav>
           </div>
 
           <header class="month-tools" id="month-tools">
@@ -74,7 +90,6 @@
       </div>
 
       <div class="app-shell">
-        <nav class="view-tabs" hidden aria-label="Vistas del hogar" id="view-tabs"></nav>
         <nav id="saved-months" class="month-chips" aria-label="Meses guardados"></nav>
 
         <div id="banner" class="banner" hidden role="status"></div>
@@ -156,7 +171,9 @@
           </section>
         </main>
 
-        <section id="analytics" class="view view-analytics" hidden aria-labelledby="analytics-title"></section>
+        <section id="analytics" class="view view-analytics" hidden aria-labelledby="analytics-title">
+          <h1 id="analytics-title">Analítica</h1>
+        </section>
 
         <footer class="foot">
           <p>Los cambios se guardan en este dispositivo. No hay cuenta ni servidor.</p>

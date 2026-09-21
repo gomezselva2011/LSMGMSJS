@@ -32,6 +32,7 @@ import {
   normalizeCurrency,
   parseRate,
 } from './money.js'
+import { analyticsHtml, MODE_CLASSIFICATION, MODE_TOTALS } from './analytics.js'
 
 const bootEl = document.querySelector('#boot')
 const fatalEl = document.querySelector('#fatal')
@@ -56,6 +57,7 @@ let formContext = null
 let confirmContext = null
 let toastTimer = 0
 let currentView = 'budget'
+let analyticsMode = MODE_TOTALS
 let chargeEditId = null
 let detailsExpenseId = null
 const expandedSubgastoIds = new Set()
@@ -456,77 +458,10 @@ function renderViewTabs() {
   `
 }
 
-function chartColumns(series, valueKey, barClass) {
-  const max = Math.max(1, ...series.map((item) => (item.ok ? Math.abs(item[valueKey]) : 0)))
-  return series
-    .map((item) => {
-      if (!item.ok) {
-        return `
-          <div class="chart-col">
-            <span class="chart-bar-label">Sin tasa</span>
-            <span class="chart-bar ${barClass}" style="height:4px;opacity:.35"></span>
-            <span class="chart-axis-label">${escapeHtml(item.label)}</span>
-          </div>
-        `
-      }
-      const value = item[valueKey]
-      const height = Math.max(4, Math.round((Math.abs(value) / max) * 160))
-      const extra =
-        valueKey === 'netUsd' ? (value < 0 ? ' is-net-neg' : ' is-net-pos') : barClass ? ` ${barClass}` : ''
-      return `
-        <div class="chart-col">
-          <span class="chart-bar-label">${formatMoney(value, 'USD')}</span>
-          <span class="chart-bar${extra}" style="height:${height}px"></span>
-          <span class="chart-axis-label">${escapeHtml(item.label)}</span>
-        </div>
-      `
-    })
-    .join('')
-}
-
 function renderAnalytics() {
   const el = document.querySelector('#analytics')
   if (!el) return
-  const series = savedMonthKeys().map((key) => {
-    const totals = monthTotals(state.months[key])
-    return { key, label: formatMonthLabel(key), ...totals }
-  })
-
-  el.innerHTML = `
-    <h1 id="analytics-title">Analítica</h1>
-    <p class="chart-caption">Totales en dólares, usando la tasa de cada mes. Así se pueden comparar.</p>
-    <section class="chart-card">
-      <div class="chart-head">
-        <div>
-          <h2>Ingresos</h2>
-          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
-        </div>
-      </div>
-      <div class="chart-plot">${chartColumns(series, 'incomeUsd', 'is-income')}</div>
-    </section>
-    <section class="chart-card">
-      <div class="chart-head">
-        <div>
-          <h2>Gastos</h2>
-          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
-        </div>
-      </div>
-      <div class="chart-plot">${chartColumns(series, 'expensesUsd', '')}</div>
-    </section>
-    <section class="chart-card">
-      <div class="chart-head">
-        <div>
-          <h2>Balance</h2>
-          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
-        </div>
-      </div>
-      <div class="chart-plot">${chartColumns(series, 'netUsd', '')}</div>
-      <div class="chart-legend">
-        <span class="legend-item"><span class="legend-swatch is-net-pos"></span> Sobran dólares</span>
-        <span class="legend-item"><span class="legend-swatch is-net-neg"></span> Faltan dólares</span>
-      </div>
-    </section>
-  `
+  el.innerHTML = analyticsHtml(state, { mode: analyticsMode, currentKey: state.currentMonth })
 }
 
 function render() {
@@ -1253,6 +1188,11 @@ function onAppClick(event) {
     goToMonth(button.dataset.month)
   } else if (action === 'show-view') {
     setView(view)
+  } else if (action === 'analytics-mode') {
+    analyticsMode = button.dataset.mode === MODE_CLASSIFICATION ? MODE_CLASSIFICATION : MODE_TOTALS
+    renderAnalytics()
+  } else if (action === 'create-next-month') {
+    createNextMonth()
   }
 }
 
