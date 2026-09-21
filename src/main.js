@@ -1776,17 +1776,26 @@ function onAppClick(event) {
 }
 
 function showFatal(message) {
-  bootEl.hidden = true
-  appEl.hidden = true
-  fatalEl.hidden = false
-  fatalMessage.textContent = message
+  if (bootEl) bootEl.hidden = true
+  if (appEl) appEl.hidden = true
+  if (fatalEl) fatalEl.hidden = false
+  if (fatalMessage) fatalMessage.textContent = message
 }
 
 function showApp() {
-  bootEl.hidden = true
-  fatalEl.hidden = true
-  appEl.hidden = false
-  render()
+  try {
+    bootEl.hidden = true
+    fatalEl.hidden = true
+    appEl.hidden = false
+    render()
+  } catch (error) {
+    console.error(error)
+    showFatal(
+      error instanceof Error
+        ? error.message
+        : 'No se pudo mostrar el presupuesto en este navegador.',
+    )
+  }
 }
 
 function closeOnBackdrop(dialog) {
@@ -1894,20 +1903,22 @@ function bindEvents() {
 }
 
 function start() {
-  bindEvents()
-  persistEnabled = storageAvailable()
-  if (!persistEnabled) {
-    persistWarning = 'Este navegador no permite guardar datos locales. Puedes usar la app, pero se perderá al salir.'
-    state = createInitialState()
-    showApp()
-    return
-  }
-
   try {
+    bindEvents()
+    persistEnabled = storageAvailable()
+    if (!persistEnabled) {
+      persistWarning =
+        'Este navegador no permite guardar datos locales. Puedes usar la app, pero se perderá al salir.'
+      state = createInitialState()
+      showApp()
+      return
+    }
+
     const loaded = loadState()
     state = loaded.state
     showApp()
   } catch (error) {
+    console.error(error)
     showFatal(
       error instanceof Error
         ? error.message

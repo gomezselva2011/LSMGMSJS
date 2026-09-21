@@ -1,0 +1,115 @@
+/* Critical boot styles: real CSS file, not injected by JS. */
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+  color: #1b2a4e;
+  background-color: #f3eee4;
+}
+
+#app[hidden],
+#fatal[hidden],
+#boot[hidden],
+[hidden] {
+  display: none !important;
+}
+
+.boot {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  padding: 2.25rem 1rem;
+  background:
+    radial-gradient(900px 380px at 8% -10%, #efe4cf 0%, transparent 58%),
+    radial-gradient(700px 320px at 100% 0%, #e8dcc4 0%, transparent 52%),
+    #f3eee4;
+  color: #1b2a4e;
+}
+
+.boot-folio {
+  position: relative;
+  width: min(22.5rem, 100%);
+  padding: 1.15rem 1.15rem 1.45rem;
+  background: #fbf7f0;
+  border: 1px solid #d7c7a8;
+  border-radius: 16px;
+  box-shadow: 0 28px 70px rgb(27 42 78 / 0.14);
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  overflow: hidden;
+}
+
+.boot-folio::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0.55rem;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #b0893a, #e2c47a, #b0893a);
+}
+
+.boot-hero {
+  display: block;
+  width: min(20rem, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #f7f4ee;
+}
+
+.boot-kicker {
+  margin: 0.65rem 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #1b2a4e;
+}
+
+.boot h1 {
+  margin: 0.15rem 0 0;
+  font-family: Fraunces, 'Palatino Linotype', serif;
+  font-weight: 620;
+  font-size: clamp(1.35rem, 3vw, 1.7rem);
+  letter-spacing: -0.03em;
+  color: #1b2a4e;
+  max-width: 16ch;
+  line-height: 1.15;
+}
+
+.boot p {
+  margin: 0;
+  color: #5a5348;
+  max-width: 32ch;
+}
+
+.boot-hint {
+  margin-top: 0.5rem;
+}
+
+.boot-error .boot-folio {
+  background: #fbf4f1;
+}
+
+.boot-error h1 {
+  max-width: 18ch;
+}
+
+.boot-error .boot-kicker {
+  color: #7f2a2a;
+}
+
+.boot-error .btn {
+  margin-top: 1rem;
+}

@@ -2,36 +2,57 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gastos del hogar — Melissa y Lenin</title>
+    <style>
+      html,body{margin:0;min-height:100%;background:#f3eee4;color:#1b2a4e}
+      [hidden]{display:none!important}
+    </style>
+    <link rel="stylesheet" href="/boot.css" />
+    <link rel="preload" as="image" href="/lm-mark.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620;9..144,680&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620;9..144,680&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
   </head>
   <body>
     <div id="boot" class="boot" role="status" aria-live="polite">
       <article class="boot-folio">
-        <div class="boot-mark" aria-hidden="true">
-          <span class="boot-leaf"></span>
-          <span class="boot-leaf boot-leaf-front"></span>
-        </div>
+        <img
+          class="boot-hero"
+          src="/lm-mark.jpg"
+          width="840"
+          height="840"
+          alt="L y M, 29 de octubre"
+        />
         <p class="boot-kicker">Gastos del hogar</p>
         <h1>Cargando el presupuesto…</h1>
-        <p>Abriendo el mes de Melissa y Lenin.</p>
-        <div class="boot-rule" aria-hidden="true"><span></span></div>
+        <p>Melissa y Lenin</p>
       </article>
     </div>
 
     <div id="fatal" class="boot boot-error" hidden role="alert">
       <article class="boot-folio">
-        <div class="boot-mark boot-mark-error" aria-hidden="true">
-          <span class="boot-leaf"></span>
-          <span class="boot-leaf boot-leaf-front"></span>
-        </div>
+        <img
+          class="boot-hero"
+          src="/lm-mark.jpg"
+          width="840"
+          height="840"
+          alt=""
+        />
         <p class="boot-kicker">No se pudo abrir</p>
         <h1 id="fatal-title">Hubo un problema con los datos guardados</h1>
         <p id="fatal-message"></p>
@@ -47,9 +68,18 @@
         <div class="top-dock-inner">
           <div class="brand-block">
             <div class="brand">
-              <p class="eyebrow">Gastos del hogar</p>
-              <p class="household">Melissa y Lenin</p>
-              <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
+              <img
+                class="brand-logo"
+                src="/lm-mark.jpg"
+                width="840"
+                height="840"
+                alt="L y M"
+              />
+              <div class="brand-copy">
+                <p class="eyebrow">Gastos del hogar</p>
+                <p class="household">Melissa y Lenin</p>
+                <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
+              </div>
             </div>
             <nav class="view-tabs" aria-label="Vistas del hogar" id="view-tabs">
               <button
