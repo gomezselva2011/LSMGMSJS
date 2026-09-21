@@ -38,7 +38,7 @@
   --text-2xl: 1.85rem;
   --text-hero: clamp(1.9rem, 4.6vw, 2.75rem);
   --touch: 44px;
-  --app-width: 72rem;
+  --app-width: 84rem;
   --chart-income: var(--pine);
   --chart-expense: var(--terracotta);
   --chart-net-pos: var(--pine);
