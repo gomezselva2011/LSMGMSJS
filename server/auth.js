@@ -3,30 +3,19 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import { HOUSEHOLD_SEEDS, PLACEHOLDER_USERNAMES, SEED_ADMIN, SEED_ADMIN_2 } from './household-users.js'
 
 const scrypt = promisify(scryptCb)
 
 export const COOKIE_NAME = 'gastos_session'
 export const MAX_USERS = 3
+export { SEED_ADMIN, SEED_ADMIN_2 }
 export const ROLE_ADMIN = 'admin'
 export const ROLE_USER = 'usuario'
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000
 const KEYLEN = 64
 const PHOTO_MAX_BYTES = 1_500_000
 
-export const SEED_ADMIN = {
-  name: 'Melissa',
-  username: 'melissa',
-  password: 'CasaLM-1029',
-  role: ROLE_ADMIN,
-}
-
-export const SEED_VIEWER = {
-  name: 'Lenin',
-  username: 'lenin',
-  password: 'VerSolo-1029',
-  role: ROLE_USER,
-}
 
 
 const PHOTO_TYPES = {
@@ -166,8 +155,11 @@ function isPublicAsset(pathname) {
 }
 
 function wantsHtml(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false
+  const pathname = pathnameOf(req)
+  if (pathname === '/' || pathname === '/index.html') return true
   const accept = String(req.headers.accept || '')
-  return req.method === 'GET' && accept.includes('text/html')
+  return accept.includes('text/html')
 }
 
 async function readJsonFile(filePath, fallback) {
@@ -232,10 +224,53 @@ export function createAuthStore(options = {}) {
   async function ensureSeeded() {
     await mkdir(avatarsDir, { recursive: true })
     await load()
-    if (users.length === 0) {
-      await seedUser(SEED_ADMIN)
-      await seedUser(SEED_VIEWER)
+    const required = HOUSEHOLD_SEEDS
+    const requiredNames = new Set(required.map((seed) => seed.username))
+    let changed = false
+
+    const kept = users.filter(
+      (user) => requiredNames.has(user.username) || !PLACEHOLDER_USERNAMES.has(user.username),
+    )
+    if (kept.length !== users.length) {
+      users = kept
+      changed = true
+    }
+
+    for (const seed of required) {
+      const existing = findByUsername(seed.username)
+      if (!existing) {
+        while (users.length >= MAX_USERS) {
+          const idx = users.findIndex((user) => !requiredNames.has(user.username))
+          if (idx < 0) break
+          users.splice(idx, 1)
+          changed = true
+        }
+        if (users.length < MAX_USERS) {
+          await seedUser(seed)
+          changed = true
+        }
+      } else {
+        if (existing.role !== ROLE_ADMIN) {
+          existing.role = ROLE_ADMIN
+          changed = true
+        }
+        if (existing.name !== seed.name) {
+          existing.name = seed.name
+          changed = true
+        }
+      }
+    }
+
+    if (users.length > MAX_USERS) {
+      const pinned = users.filter((user) => requiredNames.has(user.username))
+      const rest = users.filter((user) => !requiredNames.has(user.username))
+      users = [...pinned, ...rest].slice(0, MAX_USERS)
+      changed = true
+    }
+
+    if (changed) {
       await saveUsers()
+      if (pruneSessions()) await saveSessions()
     }
   }
 
