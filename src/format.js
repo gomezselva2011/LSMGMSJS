@@ -41,12 +41,20 @@ export function monthName(monthKey) {
   return MONTH_NAMES[month - 1]
 }
 
-export function formatCreateNextLabel(monthKey) {
-  const next = shiftMonth(monthKey, 1)
+export function formatCreateMonthLabel(monthKey, delta) {
+  const target = shiftMonth(monthKey, delta)
   const { year: fromYear } = parseMonthKey(monthKey)
-  const { year } = parseMonthKey(next)
-  const name = monthName(next)
+  const { year } = parseMonthKey(target)
+  const name = monthName(target)
   return year === fromYear ? `Crear ${name}` : `Crear ${name} ${year}`
+}
+
+export function formatCreateNextLabel(monthKey) {
+  return formatCreateMonthLabel(monthKey, 1)
+}
+
+export function formatCreatePrevLabel(monthKey) {
+  return formatCreateMonthLabel(monthKey, -1)
 }
 
 export function formatMoney(cents, currency = 'USD') {

@@ -98,6 +98,53 @@ describe('gastos API sqlite store', () => {
     assert.equal(afterRestart.months['2026-10'].expenses[0].charges[0].name, 'Lentes')
   })
 
+  it('PUT stores a cloned previous month next to October', async () => {
+    const october = {
+      exchangeRate: 36.6,
+      incomes: [{ id: 'inc-1', name: 'Salario Melissa 1', amount: 258000, dueDay: 1 }],
+      categories: [{ id: 'cat-otros', name: 'Otros gastos', layout: 'full' }],
+      expenses: [
+        {
+          id: 'exp-ot-tc-melissa',
+          name: 'TC Melissa',
+          amount: 80000,
+          categoryId: 'cat-otros',
+          dueDay: 5,
+          rubro: 'credito',
+          paymentStatus: 'paid',
+          charges: [{ id: 'chg-1', name: 'Lentes', amount: 20000, currency: 'USD' }],
+        },
+      ],
+    }
+    const payload = {
+      version: 1,
+      currentMonth: '2026-09',
+      months: {
+        '2026-09': structuredClone(october),
+        '2026-10': structuredClone(october),
+      },
+    }
+    const writeRes = mockRes()
+    await handleGastosApi(putReq(JSON.stringify(payload)), writeRes, () => {}, { dbPath, dataPath })
+    assert.equal(writeRes.statusCode, 200)
+
+    const readRes = mockRes()
+    await handleGastosApi(getReq(), readRes, () => {}, { dbPath, dataPath })
+    const body = JSON.parse(readRes.body)
+    assert.deepEqual(Object.keys(body.months).sort(), ['2026-09', '2026-10'])
+    assert.equal(body.currentMonth, '2026-09')
+    assert.equal(body.months['2026-09'].expenses[0].charges[0].name, 'Lentes')
+    assert.equal(body.months['2026-09'].expenses[0].paymentStatus, 'paid')
+    assert.equal(body.months['2026-09'].expenses[0].rubro, 'credito')
+    assert.equal(body.months['2026-10'].incomes[0].amount, 258000)
+
+    const db = openGastosDb({ dbPath })
+    const ids = db.prepare('SELECT id FROM months ORDER BY id').all().map((row) => row.id)
+    assert.deepEqual(ids, ['2026-09', '2026-10'])
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n, 2)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM charges').get().n, 2)
+  })
+
   it('rejects invalid JSON without writing months', async () => {
     const res = mockRes()
     await handleGastosApi(putReq('{not-json'), res, () => {}, { dbPath, dataPath })

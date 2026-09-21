@@ -41,7 +41,7 @@ Un admin puede crear un tercer perfil (nombre, usuario, contraseña y rol admin 
 
 - Alta, edición y baja de ingresos, gastos y categorías (admin)
 - Totales del mes: ingresos, gastos y balance
-- Cada mes se guarda aparte. **Crear noviembre** copia octubre (ingresos, gastos y categorías); las fechas pasan a decir noviembre. Desde noviembre, **Crear diciembre**, y así.
+- Cada mes se guarda aparte. **Crear noviembre** copia el mes abierto hacia adelante; **Crear septiembre** (desde octubre) lo copia hacia atrás. Ingresos, gastos, cargos, layouts, estados y rubros se clonan; las fechas pasan al mes nuevo. Desde septiembre, **Crear agosto**, y así. Si el mes ya existe, el botón se oculta.
 - Navegación entre los meses que ya existen
 - Estados vacío, de carga y de error (datos dañados o almacenamiento bloqueado)
 - Escritorio y teléfono

@@ -26,6 +26,7 @@ import {
   dollarsToCents,
   escapeHtml,
   formatCreateNextLabel,
+  formatCreatePrevLabel,
   formatDueDay,
   formatMoney,
   formatMonthLabel,
@@ -288,18 +289,35 @@ function renderSavedMonths() {
     .join('')
 }
 
-function renderCreateNext() {
-  const button = document.querySelector('#create-next-month')
-  const wrap = document.querySelector('#create-next-wrap')
+function renderCreateAdjacent() {
   const tools = document.querySelector('#month-tools')
   const next = shiftMonth(state.currentMonth, 1)
-  const exists = monthExists(next)
-  button.textContent = formatCreateNextLabel(state.currentMonth)
-  button.hidden = exists
-  if (wrap) wrap.hidden = exists
-  tools?.classList.toggle('has-cta', !exists)
-  document.querySelector('#prev-month').disabled = !monthExists(shiftMonth(state.currentMonth, -1))
-  document.querySelector('#next-month').disabled = !monthExists(next)
+  const prev = shiftMonth(state.currentMonth, -1)
+  const nextExists = monthExists(next)
+  const prevExists = monthExists(prev)
+
+  const nextButton = document.querySelector('#create-next-month')
+  const nextWrap = document.querySelector('#create-next-wrap')
+  if (nextButton) {
+    nextButton.textContent = formatCreateNextLabel(state.currentMonth)
+    nextButton.hidden = nextExists
+  }
+  if (nextWrap) nextWrap.hidden = nextExists
+
+  const prevButton = document.querySelector('#create-prev-month')
+  const prevWrap = document.querySelector('#create-prev-wrap')
+  if (prevButton) {
+    prevButton.textContent = formatCreatePrevLabel(state.currentMonth)
+    prevButton.hidden = prevExists
+  }
+  if (prevWrap) prevWrap.hidden = prevExists
+
+  const anyCta = !nextExists || !prevExists
+  const row = document.querySelector('#create-adjacent-wrap')
+  if (row) row.hidden = !anyCta
+  tools?.classList.toggle('has-cta', anyCta)
+  document.querySelector('#prev-month').disabled = !prevExists
+  document.querySelector('#next-month').disabled = !nextExists
 }
 
 function renderBanner() {
@@ -370,7 +388,7 @@ function renderSummary() {
       fxNote.textContent = rateErrorMessage(month.exchangeRate)
     }
     if (note) note.textContent = 'Corrige la tasa para ver el balance de este mes.'
-    renderCreateNext()
+    renderCreateAdjacent()
     renderSavedMonths()
     return
   }
@@ -392,7 +410,7 @@ function renderSummary() {
   if (fxNote) {
     fxNote.textContent = 'Totales en dólares, usando la tasa de este mes.'
   }
-  renderCreateNext()
+  renderCreateAdjacent()
   renderSavedMonths()
   if (totals.incomeUsd === 0 && totals.expensesUsd === 0) {
     note.textContent = 'Añade ingresos y gastos para ver el balance de este mes.'
@@ -1484,21 +1502,21 @@ async function onRestoreFileChange(event) {
   })
 }
 
-function createNextMonth() {
+function createAdjacentMonth(delta) {
   if (!canEdit()) return
   const fromKey = state.currentMonth
-  const next = shiftMonth(fromKey, 1)
+  const target = shiftMonth(fromKey, delta)
   const copy = () => {
-    state.months[next] = cloneMonth(currentMonth())
-    state.currentMonth = next
+    state.months[target] = cloneMonth(currentMonth())
+    state.currentMonth = target
     persist()
     render()
   }
 
-  if (monthExists(next)) {
+  if (monthExists(target)) {
     openConfirm({
-      title: `¿Reemplazar ${formatMonthTitle(next)}?`,
-      message: `Ya hay un presupuesto para ${formatMonthTitle(next)}. Se reemplazará con una copia exacta de ${formatMonthTitle(fromKey)}.`,
+      title: `¿Reemplazar ${formatMonthTitle(target)}?`,
+      message: `Ya hay un presupuesto para ${formatMonthTitle(target)}. Se reemplazará con una copia exacta de ${formatMonthTitle(fromKey)}.`,
       confirmLabel: 'Reemplazar',
       onConfirm: copy,
     })
@@ -1508,14 +1526,22 @@ function createNextMonth() {
   copy()
 }
 
+function createNextMonth() {
+  createAdjacentMonth(1)
+}
+
+function createPrevMonth() {
+  createAdjacentMonth(-1)
+}
+
 function changeMonth(delta) {
   const next = shiftMonth(state.currentMonth, delta)
   if (!monthExists(next)) {
-    if (delta > 0) {
-      persistWarning = `Todavía no hay ${formatMonthTitle(next)}. Pulsa «${formatCreateNextLabel(state.currentMonth)}» para copiar este mes y personalizarlo.`
-    } else {
-      persistWarning = `No hay un presupuesto guardado para ${formatMonthTitle(next)}.`
-    }
+    const label =
+      delta > 0
+        ? formatCreateNextLabel(state.currentMonth)
+        : formatCreatePrevLabel(state.currentMonth)
+    persistWarning = `Todavía no hay ${formatMonthTitle(next)}. Pulsa «${label}» para copiar este mes y personalizarlo.`
     renderBanner()
     return
   }
@@ -2004,6 +2030,8 @@ function onAppClick(event) {
     selectRubro(button.dataset.rubro)
   } else if (action === 'create-next-month') {
     createNextMonth()
+  } else if (action === 'create-prev-month') {
+    createPrevMonth()
   } else if (action === 'open-overdue') {
     openOverdueLine(id)
   }
@@ -2171,6 +2199,7 @@ function bindEvents() {
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
   document.querySelector('#create-next-month').addEventListener('click', createNextMonth)
+  document.querySelector('#create-prev-month')?.addEventListener('click', createPrevMonth)
   document.querySelector('#save-budget')?.addEventListener('click', saveNow)
   document.querySelector('#delete-month')?.addEventListener('click', deleteCurrentMonth)
   document.querySelector('#restore-october').addEventListener('click', restoreOctober)

@@ -339,6 +339,14 @@ p {
   gap: 0.45rem;
 }
 
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.55rem 0.85rem;
+}
+
 .cta-wrap {
   display: grid;
   justify-items: end;
@@ -2002,8 +2010,8 @@ dialog::backdrop {
 
   .month-nav {
     order: 1;
-    flex: 1 1 auto;
-    max-width: calc(100% - 9.75rem);
+    flex: 1 1 100%;
+    max-width: 100%;
     min-width: 0;
     justify-content: space-between;
   }
@@ -2012,10 +2020,16 @@ dialog::backdrop {
     min-width: 0;
   }
 
-  .cta-wrap {
+  .cta-row {
     order: 2;
-    width: auto;
-    flex: 0 0 auto;
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .cta-wrap {
+    flex: 1 1 0;
+    min-width: 0;
     justify-items: stretch;
   }
 
@@ -2116,8 +2130,8 @@ dialog::backdrop {
   }
 
   .cta-wrap .btn {
-    width: auto;
-    min-width: 7.5rem;
+    width: 100%;
+    min-width: 0;
     padding-inline: 0.85rem;
   }
 

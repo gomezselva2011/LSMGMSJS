@@ -40,6 +40,7 @@ const {
   normalizeExpense,
   coerceState,
   importStateFromText,
+  cloneMonth,
   GASTOS_API_PATH,
 } = await import('./storage.js')
 
@@ -77,6 +78,35 @@ describe('emptyMonthFor', () => {
       month.expenses.some((item) => item.id === 'exp-ot-tc-melissa'),
       false,
     )
+  })
+})
+
+describe('cloneMonth', () => {
+  it('copies incomes, expenses, charges, layouts, statuses and rubros without sharing objects', () => {
+    const source = createOctoberSeed()
+    const card = source.expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    card.charges = [{ id: 'chg-lentes', name: 'Lentes', amount: 20000, currency: 'USD' }]
+    card.paymentStatus = 'paid'
+    card.rubro = 'credito'
+    source.categories[0].layout = 'full'
+
+    const copy = cloneMonth(source)
+    assert.equal(copy.incomes.length, source.incomes.length)
+    assert.equal(copy.expenses.length, source.expenses.length)
+    assert.equal(copy.categories[0].layout, 'full')
+    const copyCard = copy.expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(copyCard.charges[0].name, 'Lentes')
+    assert.equal(copyCard.paymentStatus, 'paid')
+    assert.equal(copyCard.rubro, 'credito')
+
+    copyCard.amount = 1
+    copyCard.charges[0].name = 'changed'
+    copy.incomes[0].amount = 1
+    copy.categories[0].layout = 'half'
+    assert.equal(card.amount, 80000)
+    assert.equal(card.charges[0].name, 'Lentes')
+    assert.equal(source.incomes[0].amount, 258000)
+    assert.equal(source.categories[0].layout, 'full')
   })
 })
 
