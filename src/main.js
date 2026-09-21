@@ -718,8 +718,11 @@ function fillOverdueDialog(lines) {
   const lede = document.querySelector('#overdue-lede')
   if (lede) {
     const count = lines.length
-    const noun = count === 1 ? 'gasto' : 'gastos'
-    lede.textContent = `${count} ${noun} de ${monthTitle} ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte.`
+    const verb =
+      count === 1
+        ? 'ya pasó su fecha y sigue sin pagar o solo se pagó en parte'
+        : 'ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte'
+    lede.textContent = `${count} ${noun} de ${monthTitle} ${verb}.`
   }
   const list = document.querySelector('#overdue-list')
   if (list) list.innerHTML = lines.map(overdueLineHtml).join('')
