@@ -6,9 +6,9 @@ Presupuesto mensual de Melissa y Lenin: Casa San Andrés, Casa Praderas de Sandi
 
 **Esta es la URL pública; no reiniciar el túnel ni inventar otra.**
 
-https://conventions-youth-compilation-mind.trycloudflare.com
+https://split-holders-converted-cooling.trycloudflare.com
 
-Esa dirección está también en `data/public-url.txt`. El túnel Cloudflare vive en tmux `gastos-public-tunnel` y apunta a Vite en `127.0.0.1:4731`. Un *quick tunnel* (`cloudflared tunnel --url`) **cambia de hostname cada vez que se relanza**. Si el túnel ya está en marcha, déjalo: `npm run public-url` (script `scripts/ensure-public-tunnel.sh`) lo reusa y no abre otro. La ventana `keep` de esa sesión espera al proceso vivo y solo relanza cloudflared si ya murió (hostname nuevo en ese caso).
+Esa dirección está también en `data/public-url.txt`. El túnel Cloudflare vive en tmux `gastos-public-tunnel` y apunta a Vite en `127.0.0.1:4731`. Un *quick tunnel* (`cloudflared tunnel --url`) **cambia de hostname cada vez que se relanza**. Si el túnel ya está en marcha, déjalo: `npm run public-url` (script `scripts/ensure-public-tunnel.sh`) lo reusa y no abre otro. La ventana `keep` de esa sesión espera al proceso vivo. Solo lo relanza si el proceso murió, o si Cloudflare ya olvidó el túnel (`Tunnel not found` + el hostname no resuelve): en esos casos el hostname anterior no se puede recuperar.
 
 Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt**, nunca en texto plano.
 
