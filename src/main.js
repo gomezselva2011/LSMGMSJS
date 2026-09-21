@@ -457,7 +457,7 @@ function renderAnalytics() {
 
   el.innerHTML = `
     <h1 id="analytics-title">Analítica</h1>
-    <p class="chart-caption">Barras en dólares. Cada mes usa su propia tasa de cambio, para poder compararlos.</p>
+    <p class="chart-caption">Totales en dólares, usando la tasa de cada mes. Así se pueden comparar.</p>
     <section class="chart-card">
       <div class="chart-head">
         <div>
