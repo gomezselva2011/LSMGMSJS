@@ -43,7 +43,6 @@ const categoryGridEl = document.querySelector('#category-grid')
 const formDialog = document.querySelector('#form-dialog')
 const confirmDialog = document.querySelector('#confirm-dialog')
 const itemForm = document.querySelector('#item-form')
-const cardDialog = document.querySelector('#card-dialog')
 const chargeForm = document.querySelector('#charge-form')
 const detailsDialog = document.querySelector('#details-dialog')
 const detailsForm = document.querySelector('#details-form')
@@ -57,7 +56,6 @@ let formContext = null
 let confirmContext = null
 let toastTimer = 0
 let currentView = 'budget'
-let cardExpenseId = null
 let chargeEditId = null
 let detailsExpenseId = null
 
@@ -291,25 +289,40 @@ function rowActions(kind, id, extra = '') {
   `
 }
 
+function remainingMarkup(item) {
+  if (!item.charges?.length) return ''
+  const summary = cardSummary(item, currentMonth().exchangeRate)
+  if (!summary.ok) {
+    return `<small class="ledger-remain is-over">Falta la tasa</small>`
+  }
+  if (summary.disponible < 0) {
+    return `<small class="ledger-remain is-over">Se pasa ${formatMoney(Math.abs(summary.disponible), summary.currency)}</small>`
+  }
+  return `<small class="ledger-remain">Quedan ${formatMoney(summary.disponible, summary.currency)}</small>`
+}
+
 function ledgerRow(item, kind) {
   const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
   const detailsMark =
     kind === 'expense' && !detailsAreEmpty(item.details)
       ? '<span class="details-mark">Con detalles</span>'
       : ''
-  const cardBtn = item.isCard
-    ? `<button type="button" class="btn btn-row" data-action="open-card" data-id="${item.id}">Cargos</button>`
-    : ''
+  const remaining = kind === 'expense' ? remainingMarkup(item) : ''
+  const nameInner = `${escapeHtml(item.name)}${badge}${detailsMark}`
+  const name =
+    kind === 'expense'
+      ? `<button type="button" class="ledger-name" data-action="open-details" data-id="${item.id}">${nameInner}</button>`
+      : `<span class="ledger-name">${nameInner}</span>`
   const detailsBtn =
     kind === 'expense'
       ? `<button type="button" class="btn btn-row" data-action="open-details" data-id="${item.id}">Ver detalles</button>`
       : ''
   return `
     <li class="ledger-row">
-      <span class="ledger-name">${escapeHtml(item.name)}${badge}${detailsMark}</span>
+      ${name}
       <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
-      <span class="ledger-amount">${formatMoney(item.amount, item.currency)}</span>
-      ${rowActions(kind, item.id, `${detailsBtn}${cardBtn}`)}
+      <span class="ledger-amount">${formatMoney(item.amount, item.currency)}${remaining}</span>
+      ${rowActions(kind, item.id, detailsBtn)}
     </li>
   `
 }
@@ -490,7 +503,7 @@ function render() {
   if (budget) budget.hidden = currentView !== 'budget'
   if (analytics) analytics.hidden = currentView !== 'analytics'
   if (currentView === 'analytics') renderAnalytics()
-  if (cardDialog?.open && cardExpenseId) renderCardDialog()
+  if (detailsDialog?.open && detailsExpenseId) renderCardDialog()
 }
 
 function setFieldVisibility(names) {
@@ -724,6 +737,8 @@ function openDetails(id) {
   if (!item || !detailsDialog) return
   detailsExpenseId = id
   fillDetailsForm(item)
+  resetChargeForm(item)
+  renderCardDialog()
   if (!detailsDialog.open) detailsDialog.showModal()
   detailsFields().account?.focus()
 }
@@ -872,6 +887,7 @@ function deleteExpense(id) {
     message: `Se quitará «${item.name}» y el total del mes se recalculará.`,
     onConfirm: () => {
       currentMonth().expenses = currentMonth().expenses.filter((entry) => entry.id !== id)
+      if (detailsExpenseId === id) detailsDialog?.close()
       persist()
       render()
     },
@@ -902,16 +918,20 @@ function deleteCategory(id) {
 }
 
 function currentCardExpense() {
-  return currentMonth().expenses.find((item) => item.id === cardExpenseId)
+  return currentMonth().expenses.find((item) => item.id === detailsExpenseId)
 }
 
 function resetChargeForm(expense) {
   chargeEditId = null
-  document.querySelector('#charge-form-title').textContent = 'Añadir cargo'
-  document.querySelector('#charge-save').textContent = 'Añadir cargo'
+  const title = document.querySelector('#charge-form-title')
+  const save = document.querySelector('#charge-save')
+  if (title) title.textContent = 'Añadir subgasto'
+  if (save) save.textContent = 'Añadir subgasto'
   document.querySelector('#charge-cancel-edit')?.classList.add('hidden')
-  document.querySelector('#charge-name').value = ''
-  document.querySelector('#charge-amount').value = ''
+  const nameInput = document.querySelector('#charge-name')
+  const amountInput = document.querySelector('#charge-amount')
+  if (nameInput) nameInput.value = ''
+  if (amountInput) amountInput.value = ''
   const currencySelect = document.querySelector('#charge-currency')
   if (currencySelect) currencySelect.value = normalizeCurrency(expense?.currency)
   const errorEl = document.querySelector('#charge-error')
@@ -924,10 +944,12 @@ function resetChargeForm(expense) {
 
 function renderCardDialog() {
   const expense = currentCardExpense()
-  if (!expense || !cardDialog) return
+  const pagoEl = document.querySelector('#card-pago')
+  if (!expense || !pagoEl) return
   const summary = cardSummary(expense, currentMonth().exchangeRate)
-  document.querySelector('#card-title').textContent = expense.name
-  document.querySelector('#card-pago').textContent = formatMoney(summary.pago, summary.currency)
+  const title = document.querySelector('#card-title')
+  if (title) title.textContent = expense.name
+  pagoEl.textContent = formatMoney(summary.pago, summary.currency)
   document.querySelector('#card-cargado').textContent = summary.ok
     ? formatMoney(summary.cargado, summary.currency)
     : '—'
@@ -937,18 +959,21 @@ function renderCardDialog() {
   const restNote = document.querySelector('#card-rest-note')
   const restStat = document.querySelector('#card-rest-stat')
   restStat?.classList.toggle('is-negative', summary.ok && summary.disponible < 0)
-  if (!summary.ok) {
-    restNote.textContent =
-      'Falta una tasa válida para pasar cargos de otra moneda al pago de la tarjeta.'
-  } else if (summary.disponible < 0) {
-    restNote.textContent = 'Los cargos superan el pago del mes.'
-  } else {
-    restNote.textContent = 'Queda cupo en el pago del mes, en la moneda de la tarjeta.'
+  if (restNote) {
+    if (!summary.ok) {
+      restNote.textContent =
+        'Falta una tasa válida para pasar subgastos de otra moneda al monto de esta partida.'
+    } else if (summary.disponible < 0) {
+      restNote.textContent = 'Los subgastos superan el monto de esta partida.'
+    } else {
+      restNote.textContent = 'Queda saldo en la moneda de esta partida, usando la tasa del mes si hace falta.'
+    }
   }
 
   const list = document.querySelector('#charge-list')
+  if (!list) return
   if (!expense.charges.length) {
-    list.innerHTML = `<div class="empty">Todavía no hay cargos en esta tarjeta.</div>`
+    list.innerHTML = `<div class="empty">Todavía no hay subgastos en esta partida. No se suman otra vez al mes; solo descuentan de esta línea.</div>`
   } else {
     list.innerHTML = `
       <ul class="ledger">
@@ -972,13 +997,12 @@ function renderCardDialog() {
   }
 }
 
-function openCard(id) {
-  const expense = currentMonth().expenses.find((item) => item.id === id)
-  if (!expense?.isCard) return
-  cardExpenseId = id
-  resetChargeForm(expense)
+function renderSubgastos() {
   renderCardDialog()
-  if (!cardDialog.open) cardDialog.showModal()
+}
+
+function openCard(id) {
+  openDetails(id)
 }
 
 function showChargeError(message) {
@@ -992,9 +1016,10 @@ function onSubmitCharge(event) {
   event.preventDefault()
   const expense = currentCardExpense()
   if (!expense) return
+  if (!Array.isArray(expense.charges)) expense.charges = []
   const name = document.querySelector('#charge-name').value.trim()
   if (!name) {
-    showChargeError('Escribe qué se cargó.')
+    showChargeError('Escribe un nombre.')
     return
   }
   let amount
@@ -1026,8 +1051,8 @@ function startChargeEdit(id) {
   const charge = expense?.charges.find((item) => item.id === id)
   if (!charge) return
   chargeEditId = id
-  document.querySelector('#charge-form-title').textContent = 'Editar cargo'
-  document.querySelector('#charge-save').textContent = 'Guardar cargo'
+  document.querySelector('#charge-form-title').textContent = 'Editar subgasto'
+  document.querySelector('#charge-save').textContent = 'Guardar subgasto'
   document.querySelector('#charge-cancel-edit')?.classList.remove('hidden')
   document.querySelector('#charge-name').value = charge.name
   document.querySelector('#charge-amount').value = centsToInput(charge.amount)
@@ -1064,8 +1089,10 @@ function applyExchangeRate(raw) {
   renderSummary()
   renderCategories()
   if (currentView === 'analytics') renderAnalytics()
-  if (cardDialog?.open) renderCardDialog()
-  if (detailsDialog?.open) updateSuggestButtons()
+  if (detailsDialog?.open) {
+    updateSuggestButtons()
+    renderCardDialog()
+  }
 }
 
 function restoreOctober() {
@@ -1145,9 +1172,7 @@ function onAppClick(event) {
     openForm({ type: 'expense', item: month.expenses.find((item) => item.id === id) })
   } else if (action === 'delete-expense') {
     deleteExpense(id)
-  } else if (action === 'open-card') {
-    openCard(id)
-  } else if (action === 'open-details' || action === 'details-expense') {
+  } else if (action === 'open-card' || action === 'open-details' || action === 'details-expense') {
     openDetails(id)
   } else if (action === 'add-category') {
     openForm({ type: 'category' })
@@ -1201,10 +1226,7 @@ function bindEvents() {
   document.querySelector('#form-close')?.addEventListener('click', () => formDialog.close())
   document.querySelector('#confirm-cancel').addEventListener('click', () => confirmDialog.close())
   document.querySelector('#confirm-close')?.addEventListener('click', () => confirmDialog.close())
-  document.querySelector('#card-close')?.addEventListener('click', () => {
-    cardDialog?.close()
-  })
-  cardDialog?.addEventListener('click', onCardClick)
+  detailsDialog?.addEventListener('click', onCardClick)
   chargeForm?.addEventListener('submit', onSubmitCharge)
   document.querySelector('#charge-cancel-edit')?.addEventListener('click', () => {
     resetChargeForm(currentCardExpense())
@@ -1229,7 +1251,6 @@ function bindEvents() {
   document.querySelector('#suggest-expected')?.addEventListener('click', () => applySuggestion('expected'))
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
-  closeOnBackdrop(cardDialog)
   closeOnBackdrop(detailsDialog)
   document.querySelector('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault()

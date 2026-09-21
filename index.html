@@ -204,88 +204,15 @@
       </form>
     </dialog>
 
-    <dialog id="card-dialog" aria-labelledby="card-title" aria-describedby="card-lede">
+    <dialog id="details-dialog" aria-labelledby="details-title" aria-describedby="details-lede">
       <div class="card-sheet">
         <div class="card-sheet-head">
-          <div>
-            <p class="eyebrow">Tarjeta de crédito</p>
-            <h2 id="card-title">Tarjeta</h2>
-            <p id="card-lede">
-              Los cargos se descuentan del pago del mes. No se vuelven a sumar a los gastos del hogar:
-              ese pago ya los cubre.
-            </p>
-          </div>
-          <button type="button" class="icon-btn dialog-close" id="card-close" aria-label="Cerrar">×</button>
-        </div>
-
-        <div class="card-stats" id="card-stats">
-          <article>
-            <p>Pago del mes</p>
-            <strong id="card-pago">$0.00</strong>
-          </article>
-          <article>
-            <p>Cargado</p>
-            <strong id="card-cargado">$0.00</strong>
-          </article>
-          <article id="card-rest-stat">
-            <p id="card-rest-label">Disponible</p>
-            <strong id="card-rest">$0.00</strong>
-            <span id="card-rest-note"></span>
-          </article>
-        </div>
-
-        <div id="charge-list"></div>
-
-        <form id="charge-form" novalidate>
-          <h3 id="charge-form-title">Añadir cargo</h3>
-          <p id="charge-error" class="form-error" hidden></p>
-          <div class="charge-form-row">
-            <label class="field">
-              <span>Qué se cargó</span>
-              <input
-                id="charge-name"
-                name="chargeName"
-                type="text"
-                autocomplete="off"
-                maxlength="80"
-                placeholder="Lentes, celular, comida…"
-              />
-            </label>
-            <label class="field">
-              <span id="charge-amount-label">Monto</span>
-              <input
-                id="charge-amount"
-                name="chargeAmount"
-                type="text"
-                inputmode="decimal"
-                placeholder="0.00"
-              />
-            </label>
-            <label class="field">
-              <span>Moneda</span>
-              <select id="charge-currency" name="chargeCurrency">
-                <option value="USD">Dólares ($)</option>
-                <option value="NIO">Córdobas (C$)</option>
-              </select>
-            </label>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-ghost hidden" id="charge-cancel-edit">Cancelar edición</button>
-            <button type="submit" class="btn btn-primary" id="charge-save">Añadir cargo</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-
-    <dialog id="details-dialog" aria-labelledby="details-title" aria-describedby="details-lede">
-      <form id="details-form" novalidate>
-        <div class="dialog-head">
           <div>
             <p class="eyebrow">Detalle del gasto</p>
             <h2 id="details-title">Gasto</h2>
             <p id="details-lede">
-              Anota la cuenta, la mensualidad y lo esperado este ciclo. Estos montos no se suman otra
-              vez al total del mes: el presupuesto sigue usando el monto de la partida.
+              Anota la cuenta, la mensualidad y lo esperado este ciclo. Esos montos no se suman otra
+              vez al total del mes. Los subgastos solo descuentan de esta partida.
             </p>
           </div>
           <button type="button" class="icon-btn dialog-close" id="details-close" aria-label="Cerrar">×</button>
@@ -295,104 +222,172 @@
           El mes cuenta <strong id="details-main-amount">$0.00</strong> en esta partida.
         </p>
 
-        <div id="details-empty" class="empty empty-block">
-          <p>
-            Todavía no hay detalles para este gasto. Escribe el número de cuenta, la mensualidad o el
-            pago esperado cuando los tengas.
-          </p>
-        </div>
-
-        <p id="details-error" class="form-error" hidden></p>
-        <p id="details-success" class="form-success" hidden role="status">Detalles guardados.</p>
-
-        <label class="field">
-          <span>Número de cuenta</span>
-          <input
-            id="detail-account"
-            name="accountNumber"
-            type="text"
-            autocomplete="off"
-            maxlength="80"
-            placeholder="Opcional"
-          />
-        </label>
-
-        <fieldset class="detail-block">
-          <legend>Mensualidad</legend>
-          <p class="detail-hint">Lo que se paga todos los meses.</p>
-          <div class="amount-pair">
-            <label class="field">
-              <span>Dólares (USD)</span>
-              <input
-                id="detail-monthly-usd"
-                name="monthlyUsd"
-                type="text"
-                inputmode="decimal"
-                placeholder="0.00"
-                autocomplete="off"
-              />
-            </label>
-            <label class="field">
-              <span>Córdobas (C$)</span>
-              <input
-                id="detail-monthly-nio"
-                name="monthlyNio"
-                type="text"
-                inputmode="decimal"
-                placeholder="0.00"
-                autocomplete="off"
-              />
-            </label>
+        <form id="details-form" novalidate>
+          <div id="details-empty" class="empty empty-block">
+            <p>
+              Todavía no hay detalles para este gasto. Escribe el número de cuenta, la mensualidad o el
+              pago esperado cuando los tengas.
+            </p>
           </div>
-          <button type="button" class="btn btn-tiny" id="suggest-monthly" hidden></button>
-        </fieldset>
 
-        <fieldset class="detail-block">
-          <legend>Pago esperado de este ciclo</legend>
-          <p class="detail-hint">Si este mes es distinto de la mensualidad, anótalo aquí.</p>
-          <div class="amount-pair">
-            <label class="field">
-              <span>Dólares (USD)</span>
-              <input
-                id="detail-expected-usd"
-                name="expectedUsd"
-                type="text"
-                inputmode="decimal"
-                placeholder="0.00"
-                autocomplete="off"
-              />
-            </label>
-            <label class="field">
-              <span>Córdobas (C$)</span>
-              <input
-                id="detail-expected-nio"
-                name="expectedNio"
-                type="text"
-                inputmode="decimal"
-                placeholder="0.00"
-                autocomplete="off"
-              />
-            </label>
+          <p id="details-error" class="form-error" hidden></p>
+          <p id="details-success" class="form-success" hidden role="status">Detalles guardados.</p>
+
+          <label class="field">
+            <span>Número de cuenta</span>
+            <input
+              id="detail-account"
+              name="accountNumber"
+              type="text"
+              autocomplete="off"
+              maxlength="80"
+              placeholder="Opcional"
+            />
+          </label>
+
+          <fieldset class="detail-block">
+            <legend>Mensualidad</legend>
+            <p class="detail-hint">Lo que se paga todos los meses.</p>
+            <div class="amount-pair">
+              <label class="field">
+                <span>Dólares (USD)</span>
+                <input
+                  id="detail-monthly-usd"
+                  name="monthlyUsd"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="field">
+                <span>Córdobas (C$)</span>
+                <input
+                  id="detail-monthly-nio"
+                  name="monthlyNio"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <button type="button" class="btn btn-tiny" id="suggest-monthly" hidden></button>
+          </fieldset>
+
+          <fieldset class="detail-block">
+            <legend>Pago esperado de este ciclo</legend>
+            <p class="detail-hint">Si este mes es distinto de la mensualidad, anótalo aquí.</p>
+            <div class="amount-pair">
+              <label class="field">
+                <span>Dólares (USD)</span>
+                <input
+                  id="detail-expected-usd"
+                  name="expectedUsd"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="field">
+                <span>Córdobas (C$)</span>
+                <input
+                  id="detail-expected-nio"
+                  name="expectedNio"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <button type="button" class="btn btn-tiny" id="suggest-expected" hidden></button>
+          </fieldset>
+
+          <label class="field">
+            <span>Notas adicionales</span>
+            <textarea
+              id="detail-notes"
+              name="notes"
+              rows="4"
+              maxlength="2000"
+              placeholder="Recordatorios, recibos, acuerdos…"
+            ></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost" id="details-cancel">Cerrar</button>
+            <button type="submit" class="btn btn-primary" id="details-save">Guardar</button>
           </div>
-          <button type="button" class="btn btn-tiny" id="suggest-expected" hidden></button>
-        </fieldset>
+        </form>
 
-        <label class="field">
-          <span>Notas adicionales</span>
-          <textarea
-            id="detail-notes"
-            name="notes"
-            rows="4"
-            maxlength="2000"
-            placeholder="Recordatorios, recibos, acuerdos…"
-          ></textarea>
-        </label>
+        <section class="subgastos-block" aria-labelledby="subgastos-title">
+          <div>
+            <h3 id="subgastos-title">Subgastos</h3>
+            <p class="detail-hint">
+              No se suman otra vez al mes; solo descuentan de esta línea, en la moneda de la partida.
+            </p>
+          </div>
 
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" id="details-cancel">Cerrar</button>
-          <button type="submit" class="btn btn-primary" id="details-save">Guardar</button>
-        </div>
-      </form>
+          <div class="card-stats" id="card-stats">
+            <article>
+              <p>Monto de la partida</p>
+              <strong id="card-pago">$0.00</strong>
+            </article>
+            <article>
+              <p>En subgastos</p>
+              <strong id="card-cargado">$0.00</strong>
+            </article>
+            <article id="card-rest-stat">
+              <p id="card-rest-label">Quedan</p>
+              <strong id="card-rest">$0.00</strong>
+              <span id="card-rest-note"></span>
+            </article>
+          </div>
+
+          <div id="charge-list"></div>
+
+          <form id="charge-form" novalidate>
+            <h3 id="charge-form-title">Añadir subgasto</h3>
+            <p id="charge-error" class="form-error" hidden></p>
+            <div class="charge-form-row">
+              <label class="field">
+                <span>Nombre</span>
+                <input
+                  id="charge-name"
+                  name="chargeName"
+                  type="text"
+                  autocomplete="off"
+                  maxlength="80"
+                  placeholder="Lentes, celular, comida…"
+                />
+              </label>
+              <label class="field">
+                <span id="charge-amount-label">Monto</span>
+                <input
+                  id="charge-amount"
+                  name="chargeAmount"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                />
+              </label>
+              <label class="field">
+                <span>Moneda</span>
+                <select id="charge-currency" name="chargeCurrency">
+                  <option value="USD">Dólares ($)</option>
+                  <option value="NIO">Córdobas (C$)</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost hidden" id="charge-cancel-edit">Cancelar edición</button>
+              <button type="submit" class="btn btn-primary" id="charge-save">Añadir subgasto</button>
+            </div>
+          </form>
+        </section>
+      </div>
     </dialog>
 
     <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">

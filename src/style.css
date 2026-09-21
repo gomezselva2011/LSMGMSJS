@@ -1058,6 +1058,20 @@ dialog::backdrop {
   font-size: 1.2rem;
 }
 
+#card-rest-note {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.subgastos-block {
+  display: grid;
+  gap: 0.9rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
 .charge-form-row {
   display: grid;
   grid-template-columns: 1fr 7.5rem 10rem;
