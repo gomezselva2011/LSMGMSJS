@@ -13,8 +13,14 @@ const MONTH_NAMES = [
   'diciembre',
 ]
 
+export const MONTH_KEY_RE = /^\d{4}-\d{2}$/
+
+export function isMonthKey(value) {
+  return typeof value === 'string' && MONTH_KEY_RE.test(value)
+}
+
 export function parseMonthKey(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number)
+  const [year, month] = String(monthKey || '').split('-').map(Number)
   return { year, month }
 }
 

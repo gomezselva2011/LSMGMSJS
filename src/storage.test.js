@@ -108,6 +108,20 @@ describe('cloneMonth', () => {
     assert.equal(source.incomes[0].amount, 258000)
     assert.equal(source.categories[0].layout, 'full')
   })
+
+  it('Crear septiembre copies into 2026-09 without sharing the October object', () => {
+    const october = createOctoberSeed()
+    const card = october.expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    card.amount = 80000
+    const months = { '2026-10': october }
+    months['2026-09'] = cloneMonth(months['2026-10'])
+    const september = months['2026-09']
+    september.expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount = 90000
+    september.exchangeRate = 40
+    assert.equal(months['2026-10'].expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount, 80000)
+    assert.equal(months['2026-10'].exchangeRate, october.exchangeRate)
+    assert.equal(september.expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount, 90000)
+  })
 })
 
 describe('normalizeExpense charges', () => {
@@ -343,6 +357,32 @@ describe('loadHousehold server store', () => {
     assert.equal(
       puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges[1].name,
       'Celular',
+    )
+  })
+
+  it('PUT uses currentMonth as the save key when November is open', async () => {
+    const october = octoberWithCharges([LENTES])
+    const november = octoberWithCharges([CELULAR])
+    november.expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount = 90000
+    stored = {
+      version: 1,
+      currentMonth: '2026-11',
+      months: {
+        [SEEDED_MONTH]: october,
+        '2026-11': november,
+      },
+    }
+    const loaded = await loadHousehold()
+    assert.equal(loaded.state.currentMonth, '2026-11')
+    assert.equal(puts.at(-1).currentMonth, '2026-11')
+    assert.equal(puts.at(-1).saveScope, 'current')
+    assert.equal(
+      puts.at(-1).months['2026-11'].expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount,
+      90000,
+    )
+    assert.equal(
+      puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount,
+      80000,
     )
   })
 })

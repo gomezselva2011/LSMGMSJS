@@ -145,6 +145,61 @@ describe('gastos API sqlite store', () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM charges').get().n, 2)
   })
 
+  it('PUT of November does not rewrite October rows', async () => {
+    const october = {
+      exchangeRate: 36.6,
+      expenses: [
+        {
+          id: 'exp-ot-tc-melissa',
+          name: 'TC Melissa',
+          amount: 80000,
+          paymentStatus: 'unpaid',
+          charges: [{ id: 'chg-1', name: 'Lentes', amount: 20000, currency: 'USD' }],
+        },
+      ],
+    }
+    await handleGastosApi(
+      putReq(JSON.stringify({ version: 1, currentMonth: '2026-10', months: { '2026-10': structuredClone(october) } })),
+      mockRes(),
+      () => {},
+      { dbPath, dataPath },
+    )
+    const db = openGastosDb({ dbPath })
+    const octoberRowid = db.prepare("SELECT rowid AS n FROM months WHERE id = '2026-10'").get().n
+
+    const dirtyOctober = structuredClone(october)
+    dirtyOctober.expenses[0].amount = 1
+    const november = structuredClone(october)
+    november.expenses[0].amount = 90000
+    november.expenses[0].paymentStatus = 'paid'
+
+    const writeRes = mockRes()
+    await handleGastosApi(
+      putReq(
+        JSON.stringify({
+          version: 1,
+          currentMonth: '2026-11',
+          saveScope: 'current',
+          months: { '2026-10': dirtyOctober, '2026-11': november },
+        }),
+      ),
+      writeRes,
+      () => {},
+      { dbPath, dataPath },
+    )
+    assert.equal(writeRes.statusCode, 200)
+
+    const readRes = mockRes()
+    await handleGastosApi(getReq(), readRes, () => {}, { dbPath, dataPath })
+    const body = JSON.parse(readRes.body)
+    assert.equal(body.currentMonth, '2026-11')
+    assert.equal(body.months['2026-11'].expenses[0].amount, 90000)
+    assert.equal(body.months['2026-11'].expenses[0].paymentStatus, 'paid')
+    assert.equal(body.months['2026-10'].expenses[0].amount, 80000)
+    assert.equal(body.months['2026-10'].expenses[0].paymentStatus, 'unpaid')
+    assert.equal(db.prepare("SELECT rowid AS n FROM months WHERE id = '2026-10'").get().n, octoberRowid)
+  })
+
   it('rejects invalid JSON without writing months', async () => {
     const res = mockRes()
     await handleGastosApi(putReq('{not-json'), res, () => {}, { dbPath, dataPath })

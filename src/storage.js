@@ -10,7 +10,7 @@ import {
   createEmptyMonth,
   cloneMonth as duplicateMonth,
 } from './seed.js'
-import { newId } from './format.js'
+import { isMonthKey, newId } from './format.js'
 import {
   DEFAULT_EXCHANGE_RATE,
   convertCents,
@@ -191,7 +191,9 @@ export function normalizeMonth(month) {
 }
 
 export function cloneMonth(month) {
-  return normalizeMonth(duplicateMonth(month))
+  const source = month && typeof month === 'object' ? month : createEmptyMonth()
+  const copy = duplicateMonth(source)
+  return normalizeMonth(copy)
 }
 
 export function applyCategoryLayout(month, id, layout) {
@@ -316,7 +318,7 @@ export function coerceState(parsed) {
     if (Array.isArray(parsed.expenses) || Array.isArray(parsed.incomes)) {
       months = { [SEEDED_MONTH]: parsed }
     } else {
-      const monthKeys = Object.keys(parsed).filter((key) => /^\d{4}-\d{2}$/.test(key))
+      const monthKeys = Object.keys(parsed).filter(isMonthKey)
       if (!monthKeys.length || !monthKeys.some((key) => isPlainObject(parsed[key]))) {
         return null
       }
@@ -327,10 +329,12 @@ export function coerceState(parsed) {
     }
   }
 
-  const currentMonth =
-    typeof parsed.currentMonth === 'string' && /^\d{4}-\d{2}$/.test(parsed.currentMonth)
-      ? parsed.currentMonth
-      : SEEDED_MONTH
+  const monthKeys = Object.keys(months).filter(isMonthKey)
+  const currentMonth = isMonthKey(parsed.currentMonth)
+    ? parsed.currentMonth
+    : monthKeys.includes(SEEDED_MONTH)
+      ? SEEDED_MONTH
+      : (monthKeys[0] ?? SEEDED_MONTH)
 
   return {
     ...parsed,
@@ -409,9 +413,9 @@ function mergeStates(primary, extra) {
 
 function pickCurrentMonth(state) {
   const keys = Object.keys(state.months || {})
-    .filter((key) => /^\d{4}-\d{2}$/.test(key))
+    .filter(isMonthKey)
     .sort()
-  if (state.currentMonth && state.months?.[state.currentMonth]) return state.currentMonth
+  if (isMonthKey(state.currentMonth) && state.months?.[state.currentMonth]) return state.currentMonth
   if (keys.includes(SEEDED_MONTH)) return SEEDED_MONTH
   return keys[0] ?? SEEDED_MONTH
 }
@@ -459,7 +463,7 @@ export function hasHouseholdData(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false
   const months = state.months
   if (!isPlainObject(months)) return false
-  return Object.keys(months).some((key) => /^\d{4}-\d{2}$/.test(key) && isPlainObject(months[key]))
+  return Object.keys(months).some((key) => isMonthKey(key) && isPlainObject(months[key]))
 }
 
 function finalizeState(state) {
@@ -547,10 +551,16 @@ export async function fetchServerState() {
 let pendingServerPayload = null
 let serverSaveTimer = 0
 
-export function queueServerSave(state) {
+export function queueServerSave(state, options = {}) {
   if (!householdWritesEnabled || !state || !canTalkToServer()) return
   normalizeState(state)
-  pendingServerPayload = JSON.stringify(state)
+  const currentMonth = pickCurrentMonth(state)
+  state.currentMonth = currentMonth
+  pendingServerPayload = JSON.stringify({
+    ...state,
+    currentMonth,
+    saveScope: options.allMonths ? 'all' : 'current',
+  })
   if (typeof window.setTimeout !== 'function') {
     flushServerSave().catch((error) => console.error(error))
     return
@@ -631,6 +641,7 @@ export function importStateFromText(raw) {
 export function saveState(state) {
   normalizeState(state)
   state.version = CURRENT_VERSION
+  state.currentMonth = pickCurrentMonth(state)
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 

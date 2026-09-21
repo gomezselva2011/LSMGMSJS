@@ -5,6 +5,7 @@ import {
   formatCreateNextLabel,
   formatCreatePrevLabel,
   formatDueDay,
+  isMonthKey,
   shiftMonth,
 } from './format.js'
 
@@ -31,5 +32,8 @@ describe('create-month labels', () => {
     assert.equal(formatDueDay(1, '2026-09'), '1 de septiembre')
     assert.equal(shiftMonth('2026-10', -1), '2026-09')
     assert.equal(shiftMonth('2026-09', -1), '2026-08')
+    assert.equal(isMonthKey('2026-09'), true)
+    assert.equal(isMonthKey('2026-10'), true)
+    assert.equal(isMonthKey('octubre'), false)
   })
 })

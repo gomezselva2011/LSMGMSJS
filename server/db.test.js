@@ -117,4 +117,97 @@ describe('sqlite household db', () => {
     assert.equal(again.months['2026-11'].expenses[0].charges[0].name, 'Subgasto persistente')
     assert.equal(again.months['2026-11'].expenses[0].charges[0].amount, 1500)
   })
+
+  function octoberFixture(overrides = {}) {
+    return {
+      exchangeRate: 36.6,
+      incomes: [{ id: 'inc-1', name: 'Salario Melissa 1', amount: 258000, dueDay: 1 }],
+      categories: [{ id: 'cat-otros', name: 'Otros gastos', layout: 'full' }],
+      expenses: [
+        {
+          id: 'exp-ot-tc-melissa',
+          name: 'TC Melissa',
+          amount: 80000,
+          categoryId: 'cat-otros',
+          dueDay: 5,
+          rubro: 'credito',
+          paymentStatus: 'unpaid',
+          charges: [{ id: 'chg-1', name: 'Lentes', amount: 20000, currency: 'USD' }],
+          details: { accountNumber: '111', notes: 'octubre' },
+          ...overrides,
+        },
+      ],
+    }
+  }
+
+  it('keeps currentMonth as the written month_key and does not rewrite other months', async () => {
+    const root = await tmpRoot()
+    const dbPath = path.join(root, 'data', 'gastos.sqlite')
+    const db = openGastosDb({ dbPath })
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      months: { '2026-10': octoberFixture() },
+    })
+    const octoberRowid = db.prepare("SELECT rowid AS n FROM months WHERE id = '2026-10'").get().n
+    const octoberAmount = db.prepare(
+      "SELECT amount FROM expenses WHERE month_id = '2026-10' AND id = 'exp-ot-tc-melissa'",
+    ).get().amount
+
+    const dirtyOctober = octoberFixture({ amount: 1, paymentStatus: 'paid', details: { notes: 'mutated' } })
+    const november = octoberFixture({ amount: 90000, paymentStatus: 'paid', details: { accountNumber: '999', notes: 'noviembre' } })
+    november.exchangeRate = 40
+    november.categories[0].layout = 'half'
+
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-11',
+      saveScope: 'current',
+      months: {
+        '2026-10': dirtyOctober,
+        '2026-11': november,
+      },
+    })
+
+    const again = readHouseholdState(db)
+    assert.equal(again.currentMonth, '2026-11')
+    assert.deepEqual(Object.keys(again.months).sort(), ['2026-10', '2026-11'])
+    assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
+    assert.equal(again.months['2026-10'].expenses[0].paymentStatus, 'unpaid')
+    assert.equal(again.months['2026-10'].expenses[0].details.notes, 'octubre')
+    assert.equal(again.months['2026-11'].expenses[0].amount, 90000)
+    assert.equal(again.months['2026-11'].expenses[0].paymentStatus, 'paid')
+    assert.equal(again.months['2026-11'].exchangeRate, 40)
+    assert.equal(again.months['2026-11'].categories[0].layout, 'half')
+    assert.equal(db.prepare("SELECT rowid AS n FROM months WHERE id = '2026-10'").get().n, octoberRowid)
+    assert.equal(
+      db.prepare("SELECT amount FROM expenses WHERE month_id = '2026-10' AND id = 'exp-ot-tc-melissa'").get().amount,
+      octoberAmount,
+    )
+  })
+
+  it('copies Crear septiembre into 2026-09 only', async () => {
+    const root = await tmpRoot()
+    const dbPath = path.join(root, 'data', 'gastos.sqlite')
+    const db = openGastosDb({ dbPath })
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      months: { '2026-10': octoberFixture() },
+    })
+    const dirtyOctober = octoberFixture({ amount: 1 })
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-09',
+      months: {
+        '2026-09': octoberFixture({ amount: 80000, paymentStatus: 'paid' }),
+        '2026-10': dirtyOctober,
+      },
+    })
+    const again = readHouseholdState(db)
+    assert.equal(again.currentMonth, '2026-09')
+    assert.equal(again.months['2026-09'].expenses[0].paymentStatus, 'paid')
+    assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM months').get().n, 2)
+  })
 })

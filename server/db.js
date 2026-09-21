@@ -9,7 +9,13 @@ export const ROLE_VIEWER = 'viewer'
 
 const connections = new Map()
 
-const STATE_KEYS = new Set(['version', 'currentMonth', 'months'])
+export const MONTH_KEY_RE = /^\d{4}-\d{2}$/
+
+export function isMonthKey(value) {
+  return typeof value === 'string' && MONTH_KEY_RE.test(value)
+}
+
+const STATE_KEYS = new Set(['version', 'currentMonth', 'months', 'saveScope'])
 const MONTH_KEYS = new Set(['exchangeRate', 'incomes', 'categories', 'expenses'])
 const INCOME_KEYS = new Set(['id', 'name', 'amount', 'dueDay', 'currency'])
 const CATEGORY_KEYS = new Set(['id', 'name', 'layout', 'width'])
@@ -444,19 +450,50 @@ function insertMonthRows(db, monthId, month) {
   }
 }
 
+function replaceMonthRows(db, monthId, month) {
+  db.prepare('DELETE FROM months WHERE id = ?').run(monthId)
+  insertMonthRows(db, monthId, month)
+}
+
+function monthKeysFrom(months) {
+  return Object.keys(months || {}).filter(isMonthKey)
+}
+
 export function writeHouseholdState(db, data) {
   const state = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  const months = state.months && typeof state.months === 'object' && !Array.isArray(state.months) ? state.months : {}
+  const months =
+    state.months && typeof state.months === 'object' && !Array.isArray(state.months) ? state.months : {}
+  const incomingKeys = monthKeysFrom(months)
+  const currentMonth = isMonthKey(state.currentMonth) ? state.currentMonth : null
+  const saveScope = state.saveScope === 'all' ? 'all' : 'current'
 
   withTransaction(db, () => {
-    db.exec('DELETE FROM months')
     setMeta(db, 'version', state.version == null ? null : state.version)
-    setMeta(db, 'current_month', state.currentMonth == null ? null : state.currentMonth)
+    setMeta(db, 'current_month', currentMonth)
     const extra = extraJson(state, STATE_KEYS)
     setMeta(db, 'state_extra', extra)
 
-    for (const monthId of Object.keys(months)) {
-      insertMonthRows(db, monthId, months[monthId])
+    const existingKeys = new Set(db.prepare('SELECT id FROM months').all().map((row) => row.id))
+    const incoming = new Set(incomingKeys)
+
+    for (const id of existingKeys) {
+      if (!incoming.has(id)) {
+        db.prepare('DELETE FROM months WHERE id = ?').run(id)
+      }
+    }
+
+    const toWrite = new Set()
+    for (const id of incoming) {
+      if (!existingKeys.has(id)) toWrite.add(id)
+    }
+    if (saveScope === 'all' || !currentMonth || !incoming.has(currentMonth)) {
+      for (const id of incoming) toWrite.add(id)
+    } else {
+      toWrite.add(currentMonth)
+    }
+
+    for (const monthId of toWrite) {
+      replaceMonthRows(db, monthId, months[monthId])
     }
   })
 }

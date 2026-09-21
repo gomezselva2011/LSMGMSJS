@@ -178,7 +178,7 @@ function applySessionChrome() {
   }
 }
 
-function persist() {
+function persist(options) {
   let localOk = false
   try {
     saveState(state)
@@ -188,7 +188,7 @@ function persist() {
     persistEnabled = false
     console.error(error)
   }
-  if (canEdit()) queueServerSave(state)
+  if (canEdit()) queueServerSave(state, options)
   persistWarning = localOk
     ? ''
     : canEdit()
@@ -1494,7 +1494,7 @@ async function onRestoreFileChange(event) {
     confirmLabel: 'Restaurar',
     onConfirm: () => {
       state = next
-      persist()
+      persist({ allMonths: true })
       flushServerSave().catch((error) => console.error(error))
       render()
       showToast('Presupuesto restaurado')
@@ -1505,9 +1505,12 @@ async function onRestoreFileChange(event) {
 function createAdjacentMonth(delta) {
   if (!canEdit()) return
   const fromKey = state.currentMonth
+  const source = state.months[fromKey]
   const target = shiftMonth(fromKey, delta)
   const copy = () => {
-    state.months[target] = cloneMonth(currentMonth())
+    const origin = state.months[fromKey] || source
+    if (!origin) return
+    state.months[target] = cloneMonth(origin)
     state.currentMonth = target
     persist()
     render()
