@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gastos del hogar — Melissa y Lenin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="boot" class="boot" role="status">
+      <p class="boot-kicker">Gastos del hogar</p>
+      <h1>Cargando el presupuesto…</h1>
+      <p>Estamos abriendo el mes de Melissa y Lenin.</p>
+    </div>
+
+    <div id="fatal" class="boot boot-error" hidden>
+      <p class="boot-kicker">No se pudo abrir</p>
+      <h1 id="fatal-title">Hubo un problema con los datos guardados</h1>
+      <p id="fatal-message"></p>
+      <button type="button" class="btn btn-primary" id="fatal-restore">Restaurar octubre 2026</button>
+    </div>
+
+    <div id="app" hidden>
+      <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+      <header class="top">
+        <div class="top-copy">
+          <p class="eyebrow">Gastos del hogar</p>
+          <h1>Presupuesto de <span id="month-title">octubre 2026</span></h1>
+          <p class="lede">
+            Melissa y Lenin · Casa San Andrés y Casa Praderas de Sandino
+          </p>
+        </div>
+        <div class="month-nav" role="group" aria-label="Cambiar de mes">
+          <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
+          <p id="month-chip">Octubre 2026</p>
+          <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner" hidden></div>
+
+      <main id="contenido">
+        <section class="summary" aria-label="Totales del mes">
+          <article class="stat">
+            <p>Ingresos</p>
+            <strong id="total-income">$0.00</strong>
+          </article>
+          <article class="stat">
+            <p>Gastos</p>
+            <strong id="total-expenses">$0.00</strong>
+          </article>
+          <article class="stat stat-net">
+            <p>Balance</p>
+            <strong id="total-net">$0.00</strong>
+            <span id="net-note"></span>
+          </article>
+        </section>
+
+        <section class="panel" aria-labelledby="ingresos-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="ingresos-title">Ingresos</h2>
+              <p>Lo que entra este mes. El balance usa estos montos, no una cifra fija.</p>
+            </div>
+            <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
+          </div>
+          <div id="income-list"></div>
+        </section>
+
+        <section aria-labelledby="gastos-title">
+          <div class="section-head">
+            <div>
+              <h2 id="gastos-title">Gastos por casa</h2>
+              <p>Cada partida se puede editar o quitar. Las categorías también.</p>
+            </div>
+            <div class="section-actions">
+              <button type="button" class="btn btn-secondary" data-action="add-expense">Añadir gasto</button>
+              <button type="button" class="btn btn-ghost" data-action="add-category">Nueva categoría</button>
+            </div>
+          </div>
+          <div id="category-grid" class="category-grid"></div>
+        </section>
+      </main>
+
+      <footer class="foot">
+        <p>Los cambios se guardan en este dispositivo. No hay cuenta ni servidor.</p>
+        <button type="button" class="btn btn-ghost" id="restore-october">Restaurar octubre 2026</button>
+      </footer>
+    </div>
+
+    <dialog id="form-dialog" aria-labelledby="form-title">
+      <form id="item-form" novalidate>
+        <h2 id="form-title">Añadir</h2>
+        <p id="form-error" class="form-error" hidden></p>
+
+        <label class="field">
+          <span>Nombre</span>
+          <input id="field-name" name="name" type="text" autocomplete="off" required maxlength="80" />
+        </label>
+
+        <label class="field" data-field="amount">
+          <span>Monto en dólares</span>
+          <input id="field-amount" name="amount" type="text" inputmode="decimal" placeholder="0.00" />
+        </label>
+
+        <label class="field" data-field="category">
+          <span>Categoría</span>
+          <select id="field-category" name="categoryId"></select>
+        </label>
+
+        <label class="field" data-field="dueDay">
+          <span>Día del mes</span>
+          <input id="field-due" name="dueDay" type="number" min="1" max="31" placeholder="Opcional" />
+        </label>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="form-cancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="form-save">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <form id="confirm-form" method="dialog">
+        <h2 id="confirm-title">¿Eliminar?</h2>
+        <p id="confirm-message"></p>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="confirm-cancel" value="cancel">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="confirm-ok" value="ok">Eliminar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
