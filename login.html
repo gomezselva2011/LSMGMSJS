@@ -48,13 +48,53 @@
           </label>
           <label class="login-field">
             <span>Contraseña</span>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              required
-            />
+            <span class="login-password-wrap">
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                class="login-password-toggle"
+                id="login-password-toggle"
+                aria-label="Mostrar contraseña"
+                aria-controls="login-password"
+                aria-pressed="false"
+              >
+                <svg class="login-eye login-eye-show" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M2.5 12s3.6-6.5 9.5-6.5S21.5 12 21.5 12s-3.6 6.5-9.5 6.5S2.5 12 2.5 12Z"
+                  />
+                  <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" />
+                </svg>
+                <svg class="login-eye login-eye-hide" viewBox="0 0 24 24" aria-hidden="true" hidden>
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M2.5 12s3.6-6.5 9.5-6.5S21.5 12 21.5 12s-3.6 6.5-9.5 6.5S2.5 12 2.5 12Z"
+                  />
+                  <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" />
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    d="M4 19.5 20 4.5"
+                  />
+                </svg>
+              </button>
+            </span>
           </label>
           <p id="login-error" class="login-error" hidden></p>
           <button type="submit" class="btn btn-primary btn-cta" id="login-submit">Entrar</button>

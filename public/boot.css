@@ -167,6 +167,54 @@ body {
   outline-offset: 2px;
 }
 
+.login-password-wrap {
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.login-password-wrap input {
+  padding-right: 2.85rem;
+}
+
+.login-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.2rem;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #5a5348;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.login-password-toggle:hover,
+.login-password-toggle:focus-visible {
+  color: #1b2a4e;
+}
+
+.login-password-toggle:focus-visible {
+  outline: 2px solid #a63f1e;
+  outline-offset: 1px;
+}
+
+.login-password-toggle .login-eye {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+
 .login-error {
   margin: 0;
   color: #7f2a2a;
