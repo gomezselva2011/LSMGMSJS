@@ -2,6 +2,14 @@
 
 Presupuesto mensual de Melissa y Lenin: Casa San Andrés, Casa Praderas de Sandino y el resto de gastos del mes. La interfaz está en español. Octubre 2026 viene precargado desde la hoja **Gastos**, con ingreso real de **$4,800** (no $5,000). Los gastos de la hoja se mantienen; el balance usa esos $4,800.
 
+## URL pública (no cambiar)
+
+**Esta es la URL pública; no reiniciar el túnel ni inventar otra.**
+
+https://conventions-youth-compilation-mind.trycloudflare.com
+
+Esa dirección está también en `data/public-url.txt`. El túnel Cloudflare vive en tmux `gastos-public-tunnel` y apunta a Vite en `127.0.0.1:4731`. Un *quick tunnel* (`cloudflared tunnel --url`) **cambia de hostname cada vez que se relanza**. Si el túnel ya está en marcha, déjalo: `npm run public-url` (script `scripts/ensure-public-tunnel.sh`) lo reusa y no abre otro.
+
 Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt**, nunca en texto plano.
 
 ## Perfiles de arranque (temporales)
@@ -26,7 +34,7 @@ npm install
 npm run dev
 ```
 
-La app queda en [http://127.0.0.1:4731](http://127.0.0.1:4731). Sin sesión te lleva a `/login`.
+La app queda en [http://127.0.0.1:4731](http://127.0.0.1:4731). Sin sesión te lleva a `/login`. La URL pública para Chrome en el portátil es la de arriba; no abras un túnel nuevo.
 
 Otras órdenes:
 

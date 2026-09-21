@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "public-url": "bash scripts/ensure-public-tunnel.sh",
     "test": "node --test src/*.test.js server/*.test.js"
   },
   "devDependencies": {
