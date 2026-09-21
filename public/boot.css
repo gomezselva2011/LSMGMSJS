@@ -116,10 +116,15 @@ body {
 
 .login-folio {
   padding-bottom: 1.85rem;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 .login-form {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: grid;
   gap: 0.7rem;
   margin-top: 0.85rem;
@@ -127,8 +132,12 @@ body {
 }
 
 .login-field {
+  box-sizing: border-box;
   display: grid;
   gap: 0.3rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .login-field span {
@@ -138,7 +147,10 @@ body {
 }
 
 .login-field input {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 44px;
   border: 1px solid #d7c7a8;
   border-radius: 12px;
@@ -161,8 +173,11 @@ body {
 }
 
 .login-form .btn {
+  box-sizing: border-box;
   margin-top: 0.25rem;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 999px;
   min-height: 48px;
