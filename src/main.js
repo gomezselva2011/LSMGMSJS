@@ -953,19 +953,26 @@ function renderCardDialog() {
   document.querySelector('#card-cargado').textContent = summary.ok
     ? formatMoney(summary.cargado, summary.currency)
     : '—'
-  document.querySelector('#card-rest').textContent = summary.ok
-    ? formatMoney(summary.disponible, summary.currency)
-    : '—'
+  const restLabel = document.querySelector('#card-rest-label')
+  const restEl = document.querySelector('#card-rest')
   const restNote = document.querySelector('#card-rest-note')
   const restStat = document.querySelector('#card-rest-stat')
-  restStat?.classList.toggle('is-negative', summary.ok && summary.disponible < 0)
-  if (restNote) {
-    if (!summary.ok) {
+  restStat?.classList.toggle('is-negative', Boolean(summary.ok && summary.disponible < 0))
+  if (!summary.ok) {
+    if (restLabel) restLabel.textContent = 'Quedan'
+    if (restEl) restEl.textContent = '—'
+    if (restNote) {
       restNote.textContent =
         'Falta una tasa válida para pasar subgastos de otra moneda al monto de esta partida.'
-    } else if (summary.disponible < 0) {
-      restNote.textContent = 'Los subgastos superan el monto de esta partida.'
-    } else {
+    }
+  } else if (summary.disponible < 0) {
+    if (restLabel) restLabel.textContent = 'Se pasa'
+    if (restEl) restEl.textContent = formatMoney(Math.abs(summary.disponible), summary.currency)
+    if (restNote) restNote.textContent = 'Los subgastos superan el monto de esta partida. El total del mes no cambia.'
+  } else {
+    if (restLabel) restLabel.textContent = 'Quedan'
+    if (restEl) restEl.textContent = formatMoney(summary.disponible, summary.currency)
+    if (restNote) {
       restNote.textContent = 'Queda saldo en la moneda de esta partida, usando la tasa del mes si hace falta.'
     }
   }
@@ -982,7 +989,21 @@ function renderCardDialog() {
             (charge) => `
           <li class="ledger-row">
             <span class="ledger-name">${escapeHtml(charge.name)}</span>
-            <span class="ledger-date">${charge.currency === 'NIO' ? 'Córdobas' : 'Dólares'}</span>
+            <span class="ledger-date">${escapeHtml(
+              normalizeCurrency(charge.currency) === normalizeCurrency(expense.currency)
+                ? charge.currency === 'NIO'
+                  ? 'Córdobas'
+                  : 'Dólares'
+                : (() => {
+                    const converted = convertCents(
+                      charge.amount,
+                      charge.currency,
+                      expense.currency,
+                      currentMonth().exchangeRate,
+                    )
+                    return converted == null ? 'Sin tasa' : `≈ ${formatMoney(converted, expense.currency)}`
+                  })(),
+            )}</span>
             <span class="ledger-amount">${formatMoney(charge.amount, charge.currency)}</span>
             <div class="row-actions">
               <button type="button" class="btn btn-row" data-action="edit-charge" data-id="${charge.id}">Editar</button>
