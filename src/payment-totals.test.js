@@ -35,6 +35,10 @@ describe('splitParentPaidUnpaid', () => {
       36.6,
     )
     assert.deepEqual(split, { ok: true, paidUsd: 80000, unpaidUsd: 0 })
+    assert.deepEqual(
+      splitParentPaidUnpaid({ amount: 17200, currency: 'USD', paid: true }, 36.6),
+      { ok: true, paidUsd: 17200, unpaidUsd: 0 },
+    )
   })
 
   it('puts unpaid and late parents fully in no pagado', () => {

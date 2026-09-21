@@ -37,13 +37,27 @@ export function normalizePaymentStatus(value) {
 }
 
 export function readPaymentStatus(item) {
+  if (item?.paid === true || item?.pagado === true) return PAYMENT_PAID
+  if (item?.paid === false || item?.pagado === false) return PAYMENT_UNPAID
   return normalizePaymentStatus(
-    firstDefined(item?.paymentStatus, item?.payment_status, item?.estadoPago, item?.pagoEstado, item?.status),
+    firstDefined(
+      item?.paymentStatus,
+      item?.payment_status,
+      item?.estadoPago,
+      item?.pagoEstado,
+      item?.status,
+      item?.estado,
+    ),
   )
 }
 
 function readPaidAmountCents(item) {
-  const raw = firstDefined(item?.paidAmount, item?.paid_amount, item?.montoPagado, item?.pagado)
+  const raw = firstDefined(
+    item?.paidAmount,
+    item?.paid_amount,
+    item?.montoPagado,
+    typeof item?.pagado === 'number' ? item.pagado : undefined,
+  )
   if (raw == null || raw === '') return null
   const amount = Math.round(Number(raw))
   if (!Number.isFinite(amount) || amount < 0) return null
