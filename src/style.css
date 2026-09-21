@@ -1280,11 +1280,13 @@ dialog::backdrop {
 
 .chart-plot-cluster {
   gap: 1.4rem;
+  justify-content: flex-start;
 }
 
 .chart-cluster {
-  flex: 1;
-  min-width: 9.25rem;
+  flex: 0 0 auto;
+  width: 12.75rem;
+  min-width: 12.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1539,6 +1541,22 @@ dialog::backdrop {
 .compare-table td:last-child,
 .compare-table th:last-child {
   white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .compare-delta {
+    display: none;
+  }
+
+  .compare-table {
+    min-width: 18rem;
+  }
+
+  .compare-table th,
+  .compare-table td {
+    padding: 0.55rem 0.45rem;
+    font-size: var(--text-sm);
+  }
 }
 
 .hbar-list {
@@ -1818,6 +1836,11 @@ dialog::backdrop {
 
   .chart-col {
     min-width: 3rem;
+  }
+
+  .chart-cluster {
+    width: 9.1rem;
+    min-width: 9.1rem;
   }
 }
 

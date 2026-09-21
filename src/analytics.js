@@ -327,11 +327,11 @@ function compareTable(entries) {
   const rateCells = entries
     .map((entry) => `<td>${escapeHtml(rateLabel(entry.rate))}</td>`)
     .join('')
-  const deltaHead = showDelta ? '<th scope="col">Cambio</th>' : ''
+  const deltaHead = showDelta ? '<th class="compare-delta" scope="col">Cambio</th>' : ''
   const delta = (getter) => {
     if (!showDelta) return ''
-    if (!prev || !next) return '<td>—</td>'
-    return `<td>${escapeHtml(deltaCell(getter(next), getter(prev)))}</td>`
+    if (!prev || !next) return '<td class="compare-delta">—</td>'
+    return `<td class="compare-delta">${escapeHtml(deltaCell(getter(next), getter(prev)))}</td>`
   }
   return `
     <div class="compare-wrap">
@@ -366,7 +366,7 @@ function compareTable(entries) {
           <tr>
             <th scope="row">Tasa (C$ por 1 USD)</th>
             ${rateCells}
-            ${showDelta ? '<td></td>' : ''}
+            ${showDelta ? '<td class="compare-delta"></td>' : ''}
           </tr>
         </tbody>
       </table>
@@ -390,7 +390,7 @@ function classificationTable(entries) {
         .map((entry) => `<td>${escapeHtml(moneyOrDash(categoryUsd(entry, category.id)))}</td>`)
         .join('')
       const delta = showDelta
-        ? `<td>${escapeHtml(deltaCell(categoryUsd(next, category.id), categoryUsd(prev, category.id)))}</td>`
+        ? `<td class="compare-delta">${escapeHtml(deltaCell(categoryUsd(next, category.id), categoryUsd(prev, category.id)))}</td>`
         : ''
       return `<tr><th scope="row">${escapeHtml(category.name)}</th>${cells}${delta}</tr>`
     })
@@ -406,7 +406,7 @@ function classificationTable(entries) {
           <tr>
             <th scope="col">Clasificación</th>
             ${head}
-            ${showDelta ? '<th scope="col">Cambio</th>' : ''}
+            ${showDelta ? '<th class="compare-delta" scope="col">Cambio</th>' : ''}
           </tr>
         </thead>
         <tbody>${rows}</tbody>
