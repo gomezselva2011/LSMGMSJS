@@ -321,11 +321,12 @@ export function listSessions(db) {
 }
 
 export function replaceSessions(db, sessions) {
+  const known = new Set(db.prepare('SELECT id FROM users').all().map((row) => row.id))
   const insert = db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)')
   withTransaction(db, () => {
     db.exec('DELETE FROM sessions')
     for (const [token, session] of Object.entries(sessions || {})) {
-      if (!session || !token) continue
+      if (!session || !token || !known.has(session.userId)) continue
       insert.run(token, session.userId, session.expiresAt)
     }
   })
