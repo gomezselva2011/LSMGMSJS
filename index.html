@@ -37,12 +37,17 @@
             Melissa y Lenin · Casa San Andrés y Casa Praderas de Sandino
           </p>
         </div>
-        <div class="month-nav" role="group" aria-label="Cambiar de mes">
-          <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
-          <p id="month-chip">Octubre 2026</p>
-          <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+        <div class="month-tools">
+          <div class="month-nav" role="group" aria-label="Cambiar de mes">
+            <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
+            <p id="month-chip">Octubre 2026</p>
+            <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+          </div>
+          <button type="button" class="btn btn-primary" id="create-next-month">Crear noviembre</button>
         </div>
       </header>
+
+      <nav id="saved-months" class="month-chips" aria-label="Meses guardados"></nav>
 
       <div id="banner" class="banner" hidden></div>
 

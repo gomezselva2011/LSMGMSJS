@@ -24,7 +24,8 @@ npm run preview
 
 - Alta, edición y baja de ingresos, gastos y categorías
 - Totales del mes: ingresos, gastos y balance
-- Navegación entre meses (octubre 2026 trae datos; el resto empieza vacío)
+- Cada mes se guarda aparte. **Crear noviembre** copia octubre (ingresos, gastos y categorías); las fechas pasan a decir noviembre. Desde noviembre, **Crear diciembre**, y así.
+- Navegación entre los meses que ya existen
 - Estados vacío, de carga y de error (datos dañados o almacenamiento bloqueado)
 - Escritorio y teléfono
 

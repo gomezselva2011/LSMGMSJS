@@ -36,6 +36,19 @@ export function formatMonthLabel(monthKey) {
   return title.charAt(0).toUpperCase() + title.slice(1)
 }
 
+export function monthName(monthKey) {
+  const { month } = parseMonthKey(monthKey)
+  return MONTH_NAMES[month - 1]
+}
+
+export function formatCreateNextLabel(monthKey) {
+  const next = shiftMonth(monthKey, 1)
+  const { year: fromYear } = parseMonthKey(monthKey)
+  const { year } = parseMonthKey(next)
+  const name = monthName(next)
+  return year === fromYear ? `Crear ${name}` : `Crear ${name} ${year}`
+}
+
 export function formatMoney(cents) {
   const sign = cents < 0 ? '−' : ''
   const abs = Math.abs(cents) / 100

@@ -1,8 +1,7 @@
 import './style.css'
-import { createOctoberSeed, SEEDED_MONTH } from './seed.js'
+import { createOctoberSeed, SEEDED_MONTH, cloneMonth } from './seed.js'
 import {
   createInitialState,
-  emptyMonthFor,
   loadState,
   saveState,
   storageAvailable,
@@ -11,6 +10,7 @@ import {
   centsToInput,
   dollarsToCents,
   escapeHtml,
+  formatCreateNextLabel,
   formatDueDay,
   formatMoney,
   formatMonthLabel,
@@ -63,10 +63,39 @@ function persist() {
   }
 }
 
-function ensureMonth(monthKey) {
-  if (!state.months[monthKey]) {
-    state.months[monthKey] = emptyMonthFor(monthKey)
-  }
+function savedMonthKeys() {
+  return Object.keys(state.months).sort()
+}
+
+function monthExists(monthKey) {
+  return Boolean(state.months[monthKey])
+}
+
+function goToMonth(monthKey) {
+  if (!monthExists(monthKey)) return
+  persistWarning = persistEnabled ? '' : persistWarning
+  state.currentMonth = monthKey
+  persist()
+  render()
+}
+
+function renderSavedMonths() {
+  const nav = document.querySelector('#saved-months')
+  nav.innerHTML = savedMonthKeys()
+    .map((key) => {
+      const current = key === state.currentMonth
+      return `<button type="button" class="month-chip-btn${current ? ' is-current' : ''}" data-action="open-month" data-month="${key}" ${current ? 'aria-current="page"' : ''}>${escapeHtml(formatMonthLabel(key))}</button>`
+    })
+    .join('')
+}
+
+function renderCreateNext() {
+  const button = document.querySelector('#create-next-month')
+  const next = shiftMonth(state.currentMonth, 1)
+  button.textContent = formatCreateNextLabel(state.currentMonth)
+  button.hidden = monthExists(next)
+  document.querySelector('#prev-month').disabled = !monthExists(shiftMonth(state.currentMonth, -1))
+  document.querySelector('#next-month').disabled = !monthExists(next)
 }
 
 function renderBanner() {
@@ -90,6 +119,8 @@ function renderSummary() {
   document.querySelector('#total-net').textContent = formatMoney(net)
   netCard.classList.toggle('is-negative', net < 0)
   netCard.classList.toggle('is-positive', net > 0)
+  renderCreateNext()
+  renderSavedMonths()
   const note = document.querySelector('#net-note')
   if (income === 0 && expenses === 0) {
     note.textContent = 'Añade ingresos y gastos para ver el balance de este mes.'
@@ -428,12 +459,41 @@ function restoreOctober() {
   })
 }
 
+function createNextMonth() {
+  const fromKey = state.currentMonth
+  const next = shiftMonth(fromKey, 1)
+  const copy = () => {
+    state.months[next] = cloneMonth(currentMonth())
+    state.currentMonth = next
+    persist()
+    render()
+  }
+
+  if (monthExists(next)) {
+    openConfirm({
+      title: `¿Reemplazar ${formatMonthTitle(next)}?`,
+      message: `Ya hay un presupuesto para ${formatMonthTitle(next)}. Se reemplazará con una copia exacta de ${formatMonthTitle(fromKey)}.`,
+      confirmLabel: 'Reemplazar',
+      onConfirm: copy,
+    })
+    return
+  }
+
+  copy()
+}
+
 function changeMonth(delta) {
   const next = shiftMonth(state.currentMonth, delta)
-  ensureMonth(next)
-  state.currentMonth = next
-  persist()
-  render()
+  if (!monthExists(next)) {
+    if (delta > 0) {
+      persistWarning = `Todavía no hay ${formatMonthTitle(next)}. Pulsa «${formatCreateNextLabel(state.currentMonth)}» para copiar este mes y personalizarlo.`
+    } else {
+      persistWarning = `No hay un presupuesto guardado para ${formatMonthTitle(next)}.`
+    }
+    renderBanner()
+    return
+  }
+  goToMonth(next)
 }
 
 function onAppClick(event) {
@@ -467,6 +527,8 @@ function onAppClick(event) {
     openForm({ type: 'category', item: month.categories.find((item) => item.id === id) })
   } else if (action === 'delete-category') {
     deleteCategory(id)
+  } else if (action === 'open-month') {
+    goToMonth(button.dataset.month)
   }
 }
 
@@ -487,6 +549,7 @@ function showApp() {
 function bindEvents() {
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
+  document.querySelector('#create-next-month').addEventListener('click', createNextMonth)
   document.querySelector('#restore-october').addEventListener('click', restoreOctober)
   document.querySelector('#fatal-restore').addEventListener('click', () => {
     state = createInitialState()

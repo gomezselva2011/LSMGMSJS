@@ -139,6 +139,36 @@ p {
   max-width: 38ch;
 }
 
+.month-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.month-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1.1rem;
+}
+
+.month-chip-btn {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.month-chip-btn.is-current {
+  background: var(--ink);
+  color: #f7f3ea;
+  border-color: var(--ink);
+}
+
 .month-nav {
   display: flex;
   align-items: center;
@@ -169,6 +199,13 @@ p {
 .icon-btn:hover,
 .btn:hover {
   transform: translateY(-1px);
+}
+
+.icon-btn:disabled,
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .banner {
@@ -464,8 +501,15 @@ dialog::backdrop {
     align-items: stretch;
   }
 
+  .month-tools,
   .month-nav {
-    width: fit-content;
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .month-nav {
+    width: auto;
+    justify-content: space-between;
   }
 
   .ledger li {
