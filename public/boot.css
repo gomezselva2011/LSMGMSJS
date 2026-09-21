@@ -142,7 +142,7 @@ body {
   min-width: 0;
 }
 
-.login-field span {
+.login-field > label {
   font-size: 0.8rem;
   font-weight: 700;
   color: #1b2a4e;
@@ -177,13 +177,16 @@ body {
 }
 
 .login-password-wrap input {
+  position: relative;
+  z-index: 0;
   padding-right: 2.85rem;
 }
 
 .login-password-toggle {
   position: absolute;
+  z-index: 2;
   top: 50%;
-  right: 0.2rem;
+  right: 0.15rem;
   transform: translateY(-50%);
   box-sizing: border-box;
   width: 2.4rem;
@@ -193,15 +196,17 @@ body {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #5a5348;
+  color: #1b2a4e;
   cursor: pointer;
   display: grid;
   place-items: center;
+  pointer-events: auto;
 }
 
 .login-password-toggle:hover,
 .login-password-toggle:focus-visible {
-  color: #1b2a4e;
+  color: #a63f1e;
+  background: rgb(166 63 30 / 0.08);
 }
 
 .login-password-toggle:focus-visible {
@@ -210,9 +215,10 @@ body {
 }
 
 .login-password-toggle .login-eye {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.3rem;
+  height: 1.3rem;
   display: block;
+  pointer-events: none;
 }
 
 .login-error {

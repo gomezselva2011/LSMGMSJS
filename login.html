@@ -34,8 +34,8 @@
         <h1>Entrar al presupuesto</h1>
         <p>Melissa y Lenin</p>
         <form id="login-form" class="login-form" novalidate>
-          <label class="login-field">
-            <span>Usuario</span>
+          <div class="login-field">
+            <label for="login-username">Usuario</label>
             <input
               id="login-username"
               name="username"
@@ -45,10 +45,10 @@
               maxlength="32"
               spellcheck="false"
             />
-          </label>
-          <label class="login-field">
-            <span>Contraseña</span>
-            <span class="login-password-wrap">
+          </div>
+          <div class="login-field">
+            <label for="login-password">Contraseña</label>
+            <div class="login-password-wrap" data-password-wrap>
               <input
                 id="login-password"
                 name="password"
@@ -60,11 +60,13 @@
                 type="button"
                 class="login-password-toggle"
                 id="login-password-toggle"
+                data-password-toggle
                 aria-label="Mostrar contraseña"
+                title="Mostrar contraseña"
                 aria-controls="login-password"
                 aria-pressed="false"
               >
-                <svg class="login-eye login-eye-show" viewBox="0 0 24 24" aria-hidden="true">
+                <svg class="login-eye eye-show" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     fill="none"
                     stroke="currentColor"
@@ -75,7 +77,7 @@
                   />
                   <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" />
                 </svg>
-                <svg class="login-eye login-eye-hide" viewBox="0 0 24 24" aria-hidden="true" hidden>
+                <svg class="login-eye eye-hide" viewBox="0 0 24 24" aria-hidden="true" hidden>
                   <path
                     fill="none"
                     stroke="currentColor"
@@ -94,8 +96,8 @@
                   />
                 </svg>
               </button>
-            </span>
-          </label>
+            </div>
+          </div>
           <p id="login-error" class="login-error" hidden></p>
           <button type="submit" class="btn btn-primary btn-cta" id="login-submit">Entrar</button>
         </form>

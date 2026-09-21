@@ -1196,9 +1196,63 @@ dialog::backdrop {
   gap: 0.35rem;
 }
 
-.field span {
+.field span,
+.field > label {
   font-weight: 650;
   font-size: var(--text-sm);
+}
+
+.password-wrap {
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.password-wrap input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding-right: 2.85rem;
+}
+
+.password-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 0.15rem;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--navy);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--terracotta);
+  background: rgb(166 63 30 / 0.08);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 1px;
+}
+
+.password-toggle .eye-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+  display: block;
+  pointer-events: none;
 }
 
 .field-hint {
@@ -1215,6 +1269,10 @@ dialog::backdrop {
   min-height: var(--touch);
   padding: 0.65rem 0.85rem;
   background: #fff;
+}
+
+.field .password-wrap input {
+  padding-right: 2.85rem;
 }
 
 .field textarea {

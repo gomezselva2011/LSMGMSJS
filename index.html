@@ -280,10 +280,58 @@
               <span>Usuario</span>
               <input name="username" type="text" required maxlength="32" autocomplete="off" spellcheck="false" />
             </label>
-            <label class="field">
-              <span>Contraseña</span>
-              <input name="password" type="password" required minlength="6" autocomplete="new-password" />
-            </label>
+            <div class="field">
+              <label for="create-profile-password">Contraseña</label>
+              <div class="password-wrap" data-password-wrap>
+                <input
+                  id="create-profile-password"
+                  name="password"
+                  type="password"
+                  required
+                  minlength="6"
+                  autocomplete="new-password"
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  data-password-toggle
+                  aria-label="Mostrar contraseña"
+                  title="Mostrar contraseña"
+                  aria-controls="create-profile-password"
+                  aria-pressed="false"
+                >
+                  <svg class="eye-icon eye-show" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M2.5 12s3.6-6.5 9.5-6.5S21.5 12 21.5 12s-3.6 6.5-9.5 6.5S2.5 12 2.5 12Z"
+                    />
+                    <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" />
+                  </svg>
+                  <svg class="eye-icon eye-hide" viewBox="0 0 24 24" aria-hidden="true" hidden>
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M2.5 12s3.6-6.5 9.5-6.5S21.5 12 21.5 12s-3.6 6.5-9.5 6.5S2.5 12 2.5 12Z"
+                    />
+                    <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" />
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      d="M4 19.5 20 4.5"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
             <label class="field">
               <span>Rol</span>
               <select name="role">

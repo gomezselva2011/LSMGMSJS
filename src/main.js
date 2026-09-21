@@ -1,4 +1,5 @@
 import './style.css'
+import { bindPasswordToggles } from './password-toggle.js'
 import { createOctoberSeed, SEEDED_MONTH } from './seed.js'
 import {
   applyCategoryLayout,
@@ -2199,6 +2200,7 @@ async function onChangePhoto(event) {
 }
 
 function bindEvents() {
+  bindPasswordToggles()
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
   document.querySelector('#create-next-month').addEventListener('click', createNextMonth)
