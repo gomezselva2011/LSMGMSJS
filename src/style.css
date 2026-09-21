@@ -203,7 +203,7 @@ p {
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: 8px;
-  background: #f7f4ee;
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
 }
 
 .boot h1 {
@@ -296,7 +296,7 @@ p {
   border: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
   flex: none;
-  background: #f7f4ee;
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
 }
 
 .brand-copy {
@@ -2123,6 +2123,17 @@ dialog::backdrop {
     margin: 0;
   }
 
+  .account-cluster {
+    order: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .account-chip {
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .month-nav {
     order: 1;
     flex: 1 1 100%;
@@ -2726,6 +2737,7 @@ body.is-readonly .admin-only {
 
 .account-cluster {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
@@ -2752,10 +2764,19 @@ body.is-readonly .admin-only {
 .account-chip img {
   width: 2.15rem;
   height: 2.15rem;
+  flex: none;
   object-fit: cover;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: #f7f4ee;
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
+}
+
+.account-chip img.photo-missing,
+.account-profile img.photo-missing,
+.profile-row img.photo-missing,
+.brand-logo.photo-missing,
+.boot-hero.photo-missing {
+  color: transparent;
 }
 
 .account-copy {
@@ -2888,10 +2909,11 @@ body.is-readonly .admin-only {
 .account-profile img {
   width: 4.25rem;
   height: 4.25rem;
+  flex: none;
   object-fit: cover;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #f7f4ee;
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
 }
 
 #account-dialog-name {
@@ -2921,9 +2943,11 @@ body.is-readonly .admin-only {
 .profile-row img {
   width: 2.4rem;
   height: 2.4rem;
+  flex: none;
   object-fit: cover;
   border-radius: 50%;
   border: 1px solid var(--line);
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
 }
 
 .profile-row strong {

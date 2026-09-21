@@ -34,6 +34,18 @@ const PHOTO_TYPES = {
   'image/webp': 'webp',
 }
 
+const MARK_SVG = Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="#f7f4ee"/><text x="48" y="56" text-anchor="middle" font-family="serif" font-size="20" fill="#1b2a4e">L&amp;M</text></svg>`,
+)
+
+function sendMarkSvg(res) {
+  res.statusCode = 200
+  res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8')
+  res.setHeader('Cache-Control', 'private, max-age=60')
+  res.setHeader('Content-Length', String(MARK_SVG.length))
+  res.end(MARK_SVG)
+}
+
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body)
   res.statusCode = status
@@ -405,29 +417,34 @@ export function createAuthStore(options = {}) {
       const file = path.join(avatarsDir, user.photo)
       try {
         const info = await stat(file)
-        const ext = path.extname(file).slice(1)
-        const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-        res.statusCode = 200
-        res.setHeader('Content-Type', type)
-        res.setHeader('Content-Length', info.size)
-        res.setHeader('Cache-Control', 'private, max-age=120')
-        createReadStream(file).pipe(res)
-        return
+        if (info.size > 0) {
+          const ext = path.extname(file).slice(1)
+          const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+          res.statusCode = 200
+          res.setHeader('Content-Type', type)
+          res.setHeader('Content-Length', info.size)
+          res.setHeader('Cache-Control', 'private, max-age=120')
+          createReadStream(file).pipe(res)
+          return
+        }
       } catch {
         // Fall through to the L&M mark.
       }
     }
     try {
       const info = await stat(markPath)
-      res.statusCode = 200
-      res.setHeader('Content-Type', 'image/jpeg')
-      res.setHeader('Content-Length', info.size)
-      res.setHeader('Cache-Control', 'private, max-age=300')
-      createReadStream(markPath).pipe(res)
+      if (info.size > 0) {
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'image/jpeg')
+        res.setHeader('Content-Length', info.size)
+        res.setHeader('Cache-Control', 'private, max-age=300')
+        createReadStream(markPath).pipe(res)
+        return
+      }
     } catch {
-      res.writeHead(302, { Location: '/lm-mark.jpg' })
-      res.end()
+      // Last resort: never send JSON/HTML that browsers show as a broken image.
     }
+    sendMarkSvg(res)
   }
 
   return {
@@ -484,6 +501,13 @@ export async function handleAuthRequest(req, res, next, store) {
         return true
       }
 
+      const photoMatch = pathname.match(/^\/api\/users\/([^/]+)\/photo$/)
+      if (req.method === 'GET' && photoMatch) {
+        const target = store.findUser(photoMatch[1])
+        await store.sendPhoto(target, res)
+        return true
+      }
+
       const user = store.userFromRequest(req)
 
       if (req.method === 'POST' && isLogoutPath(pathname)) {
@@ -534,17 +558,6 @@ export async function handleAuthRequest(req, res, next, store) {
                 : 500
           sendJson(res, status, { error: error.message })
         }
-        return true
-      }
-
-      const photoMatch = pathname.match(/^\/api\/users\/([^/]+)\/photo$/)
-      if (req.method === 'GET' && photoMatch) {
-        const target = store.findUser(photoMatch[1])
-        if (!target) {
-          sendJson(res, 404, { error: 'No está ese perfil.' })
-          return true
-        }
-        await store.sendPhoto(target, res)
         return true
       }
 

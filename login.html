@@ -13,6 +13,19 @@
     </style>
     <link rel="stylesheet" href="/boot.css" />
     <link rel="preload" as="image" href="/lm-mark.jpg" />
+    <script>
+      function lmPhotoErr(img) {
+        if (!img) return
+        if (img.dataset.lmfb === 'mark') {
+          img.onerror = null
+          img.src =
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='12' fill='%23f7f4ee'/%3E%3Ctext x='48' y='56' text-anchor='middle' font-family='Georgia,serif' font-size='20' fill='%231b2a4e'%3EL%26amp;M%3C/text%3E%3C/svg%3E"
+          return
+        }
+        img.dataset.lmfb = 'mark'
+        img.src = '/lm-mark.jpg'
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -29,6 +42,7 @@
           width="840"
           height="840"
           alt="L y M, 29 de octubre"
+          onerror="lmPhotoErr(this)"
         />
         <p class="boot-kicker">Gastos del hogar</p>
         <h1>Entrar al presupuesto</h1>

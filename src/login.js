@@ -1,10 +1,12 @@
 import { bindPasswordToggles } from './password-toggle.js'
+import { bindPhotoFallbacks } from './photo.js'
 
 const form = document.querySelector('#login-form')
 const errorEl = document.querySelector('#login-error')
 const submit = document.querySelector('#login-submit')
 
 bindPasswordToggles()
+bindPhotoFallbacks()
 
 function showError(message) {
   if (!errorEl) return

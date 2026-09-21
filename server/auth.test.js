@@ -62,6 +62,23 @@ function getReq(url, cookie, accept = 'application/json') {
   }
 }
 
+function collectStreamRes() {
+  const chunks = []
+  const res = new PassThrough()
+  res.headers = {}
+  res.statusCode = 0
+  res.setHeader = function setHeader(key, value) {
+    this.headers[key] = value
+  }
+  res.writeHead = function writeHead(status, headers = {}) {
+    this.statusCode = status
+    Object.assign(this.headers, headers)
+  }
+  res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+  const done = new Promise((resolve) => res.on('end', resolve))
+  return { res, done, body: () => Buffer.concat(chunks) }
+}
+
 describe('password hashing', () => {
   it('hashes with scrypt and never stores the plaintext', async () => {
     const secret = 'not-a-stored-password'
@@ -338,22 +355,34 @@ describe('auth store and HTTP', () => {
     const meRes = mockRes()
     await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, store)
     const id = JSON.parse(meRes.body).user.id
-    const chunks = []
-    const res = new PassThrough()
-    res.headers = {}
-    res.statusCode = 0
-    res.setHeader = function setHeader(key, value) {
-      this.headers[key] = value
-    }
-    res.writeHead = function writeHead(status, headers = {}) {
-      this.statusCode = status
-      Object.assign(this.headers, headers)
-    }
-    res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-    const done = new Promise((resolve) => res.on('end', resolve))
-    await handleAuthRequest(getReq(`/api/users/${id}/photo`, cookie), res, () => {}, store)
-    await done
-    assert.equal(res.headers['Content-Type'], 'image/jpeg')
-    assert.equal(Buffer.concat(chunks).toString(), 'fake-lm-mark')
+    const stream = collectStreamRes()
+    await handleAuthRequest(getReq(`/api/users/${id}/photo`, cookie), stream.res, () => {}, store)
+    await stream.done
+    assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
+    assert.equal(stream.body().toString(), 'fake-lm-mark')
+  })
+
+  it('serves the mark for a missing saved photo file, even without a session cookie', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const meRes = mockRes()
+    await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, store)
+    const id = JSON.parse(meRes.body).user.id
+    const row = store.findUser(id)
+    row.photo = 'missing-avatar.jpg'
+    const stream = collectStreamRes()
+    await handleAuthRequest(getReq(`/api/users/${id}/photo`), stream.res, () => {}, store)
+    await stream.done
+    assert.equal(stream.res.statusCode, 200)
+    assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
+    assert.equal(stream.body().toString(), 'fake-lm-mark')
+  })
+
+  it('never returns JSON for an unknown profile photo', async () => {
+    const stream = collectStreamRes()
+    await handleAuthRequest(getReq('/api/users/usr_missing/photo'), stream.res, () => {}, store)
+    await stream.done
+    assert.equal(stream.res.statusCode, 200)
+    assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
+    assert.equal(stream.body().toString(), 'fake-lm-mark')
   })
 })

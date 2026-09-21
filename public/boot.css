@@ -67,7 +67,7 @@ body {
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: 8px;
-  background: #f7f4ee;
+  background: #f7f4ee url('/lm-mark.jpg') center / cover no-repeat;
 }
 
 .boot-kicker {

@@ -1,5 +1,6 @@
 import './style.css'
 import { bindPasswordToggles } from './password-toggle.js'
+import { bindPhotoFallbacks, photoSrc, setPhotoSrc } from './photo.js'
 import { createOctoberSeed, SEEDED_MONTH } from './seed.js'
 import {
   applyCategoryLayout,
@@ -142,11 +143,6 @@ function roleLabel(role) {
   return role === 'admin' ? 'Admin' : 'Solo lectura'
 }
 
-function photoSrc(user, bust = false) {
-  const url = user?.photoUrl || '/lm-mark.jpg'
-  return bust ? `${url}?t=${Date.now()}` : url
-}
-
 function applySessionChrome() {
   document.body.classList.toggle('is-readonly', !canEdit())
   document.body.classList.toggle('is-admin', canEdit())
@@ -154,7 +150,7 @@ function applySessionChrome() {
   const role = roleLabel(currentUser?.role)
   const src = photoSrc(currentUser)
   document.querySelectorAll('#account-photo, #account-dialog-photo').forEach((img) => {
-    if (img) img.src = src
+    setPhotoSrc(img, src)
   })
   const chipName = document.querySelector('#account-name')
   const chipRole = document.querySelector('#account-role')
@@ -2192,7 +2188,7 @@ async function refreshProfiles() {
     .map(
       (user) => `
       <article class="profile-row">
-        <img src="${escapeHtml(user.photoUrl)}" alt="" width="40" height="40" />
+        <img data-photo src="${escapeHtml(user.photoUrl)}" alt="" width="40" height="40" />
         <div>
           <strong>${escapeHtml(user.name)}</strong>
           <small>@${escapeHtml(user.username)} · ${escapeHtml(roleLabel(user.role))}</small>
@@ -2201,6 +2197,7 @@ async function refreshProfiles() {
     `,
     )
     .join('')
+  bindPhotoFallbacks(list)
   const form = document.querySelector('#create-profile-form')
   if (form) form.hidden = users.length >= (body.max || 3)
   const cap = document.querySelector('#profiles-cap')
@@ -2265,14 +2262,16 @@ async function onChangePhoto(event) {
   }
   currentUser = body.user
   applySessionChrome()
+  const next = photoSrc(currentUser, true)
   document.querySelectorAll('#account-photo, #account-dialog-photo').forEach((img) => {
-    if (img) img.src = photoSrc(currentUser, true)
+    setPhotoSrc(img, next)
   })
   showToast('Foto actualizada')
 }
 
 function bindEvents() {
   bindPasswordToggles()
+  bindPhotoFallbacks()
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
   document.querySelector('#create-next-month').addEventListener('click', createNextMonth)
