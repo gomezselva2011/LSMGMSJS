@@ -135,6 +135,18 @@ p {
   top: 0.75rem;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #app,
 .boot {
   position: relative;
@@ -748,6 +760,50 @@ p {
   grid-column: 1 / -1;
 }
 
+.category-grid.is-reclassifying .category-card {
+  outline: 1px dashed var(--line-strong);
+  outline-offset: 2px;
+}
+
+.category-card.is-drop-target {
+  outline: 2px dashed var(--pine);
+  outline-offset: 3px;
+  border-style: dashed;
+  border-color: var(--pine);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      var(--pine-soft) 0 8px,
+      var(--card) 8px 16px
+    );
+  box-shadow: var(--shadow-sm);
+}
+
+.category-card.is-drop-invalid {
+  outline-style: dotted;
+  outline-color: var(--muted);
+  border-color: var(--line-strong);
+  background: var(--paper);
+}
+
+.drop-hint {
+  margin: 0.35rem 0 0.7rem;
+  padding: 0.45rem 0.7rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--pine);
+  border: 1px dashed var(--pine);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.category-card.is-drop-invalid .drop-hint {
+  color: var(--muted);
+  border-style: dotted;
+  border-color: var(--muted);
+}
+
 .card-head h3 {
   font-family: var(--font-serif);
   font-size: 1.18rem;
@@ -866,6 +922,43 @@ p {
   min-height: var(--touch);
   padding: 0.75rem 0.15rem;
   border-top: 1px solid var(--line);
+}
+
+.ledger-row.has-grip {
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'grip name amount actions'
+    'grip date amount actions';
+  column-gap: 0.7rem;
+}
+
+.ledger-drag {
+  cursor: grab;
+  user-select: none;
+}
+
+.ledger-drag button,
+.ledger-drag .btn {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ledger-drag.is-dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+
+.drag-grip {
+  grid-area: grip;
+  width: 1.15rem;
+  height: 1.7rem;
+  align-self: center;
+  justify-self: center;
+  background-image: radial-gradient(circle, var(--muted) 1.15px, transparent 1.3px);
+  background-size: 0.42rem 0.42rem;
+  background-position: center;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .ledger-name {
@@ -1167,6 +1260,16 @@ dialog::backdrop {
 .form-actions {
   justify-content: flex-end;
   margin-top: 0.2rem;
+}
+
+.move-targets {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.move-target {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .hidden {
@@ -1825,6 +1928,13 @@ dialog::backdrop {
     padding: 0.7rem 0.1rem;
   }
 
+  .ledger-row.has-grip {
+    grid-template-columns: 1.1rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      'grip name amount'
+      'grip date actions';
+  }
+
   .ledger-amount {
     min-width: 0;
   }
@@ -1917,11 +2027,11 @@ dialog::backdrop {
   border-top: 0;
 }
 
-.ledger-row-main {
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+.ledger-row.ledger-row-main.has-grip {
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto auto auto;
   grid-template-areas:
-    'name amount add actions'
-    'date amount add actions';
+    'grip name amount add actions'
+    'grip date amount add actions';
 }
 
 .btn-add-sub {
@@ -1990,11 +2100,11 @@ dialog::backdrop {
 }
 
 @media (max-width: 860px) {
-  .ledger-row-main {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+  .ledger-row.ledger-row-main.has-grip {
+    grid-template-columns: 1.1rem minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'name amount add'
-      'date actions add';
+      'grip name amount add'
+      'grip date actions add';
   }
 
   .btn-add-sub {

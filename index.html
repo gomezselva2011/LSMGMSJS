@@ -157,9 +157,10 @@
               <div>
                 <h2 id="gastos-title">Gastos por casa</h2>
                 <p>
-                  Cada partida se edita o se quita. En <strong>Ver detalles</strong> anotas la cuenta,
-                  la mensualidad y los subgastos. El mes cuenta solo el monto de la línea; los
-                  subgastos descuentan de esa partida, no del total del hogar.
+                  Cada partida se edita o se quita. Arrástrala a otra categoría para reclasificarla;
+                  en el teléfono usa <strong>Mover a…</strong>. En <strong>Ver detalles</strong>
+                  anotas la cuenta, la mensualidad y los subgastos. El mes cuenta solo el monto de
+                  la línea; los subgastos viajan con la partida y no se suman otra vez al hogar.
                 </p>
               </div>
               <div class="section-actions">
@@ -435,7 +436,22 @@
       </form>
     </dialog>
 
+    <dialog id="move-dialog" aria-labelledby="move-title" aria-describedby="move-message">
+      <form id="move-form" method="dialog">
+        <div class="dialog-head">
+          <h2 id="move-title">Mover gasto</h2>
+          <button type="button" class="icon-btn dialog-close" id="move-close" aria-label="Cerrar">×</button>
+        </div>
+        <p id="move-message"></p>
+        <div id="move-targets" class="move-targets"></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="move-cancel">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+
     <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+    <p id="dnd-live" class="sr-only" role="status" aria-live="polite"></p>
 
     <script type="module" src="/src/main.js"></script>
   </body>

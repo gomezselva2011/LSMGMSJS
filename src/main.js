@@ -47,8 +47,10 @@ const itemForm = document.querySelector('#item-form')
 const chargeForm = document.querySelector('#charge-form')
 const detailsDialog = document.querySelector('#details-dialog')
 const detailsForm = document.querySelector('#details-form')
+const moveDialog = document.querySelector('#move-dialog')
 
 const toastEl = document.querySelector('#toast')
+const dndLiveEl = document.querySelector('#dnd-live')
 
 let state = null
 let persistEnabled = true
@@ -60,7 +62,12 @@ let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
 let chargeEditId = null
 let detailsExpenseId = null
+let moveExpenseId = null
+let dragExpenseId = null
+let longPressTimer = 0
+let longPressStart = null
 const expandedSubgastoIds = new Set()
+const DRAG_MIME = 'application/x-gastos-expense'
 
 function currentMonth() {
   return state.months[state.currentMonth]
@@ -284,9 +291,14 @@ function renderSummary() {
 }
 
 function rowActions(kind, id, extra = '') {
+  const moveBtn =
+    kind === 'expense'
+      ? `<button type="button" class="btn btn-row btn-move" data-action="move-expense" data-id="${id}">Mover a…</button>`
+      : ''
   return `
     <div class="row-actions">
       ${extra}
+      ${moveBtn}
       <button type="button" class="btn btn-row" data-action="edit-${kind}" data-id="${id}">Editar</button>
       <button type="button" class="btn btn-row" data-action="delete-${kind}" data-id="${id}">Eliminar</button>
     </div>
@@ -307,7 +319,7 @@ function remainingMarkup(item) {
 
 function nestedChargeRow(charge) {
   return `
-    <li class="ledger-sub-row">
+    <li class="ledger-sub-row" draggable="false">
       <span class="ledger-sub-name">${escapeHtml(charge.name)}</span>
       <span class="ledger-sub-amount">${formatMoney(charge.amount, charge.currency)}</span>
     </li>
@@ -338,16 +350,25 @@ function ledgerRow(item, kind) {
   const toggleBtn = hasSubs
     ? `<button type="button" class="btn-add-sub" data-action="toggle-subgastos" data-id="${item.id}" aria-label="${toggleLabel} de ${escapeHtml(item.name)}" title="${toggleLabel}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '−' : '+'}</button>`
     : ''
+  const grip =
+    kind === 'expense'
+      ? `<span class="drag-grip" aria-hidden="true" title="Arrastra a otra categoría"></span>`
+      : ''
   const rowInner = `
+      ${grip}
       ${name}
       <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
       <span class="ledger-amount">${formatMoney(item.amount, item.currency)}${remaining}</span>
       ${toggleBtn}
       ${rowActions(kind, item.id, detailsBtn)}
   `
+  const dragAttrs =
+    kind === 'expense'
+      ? ` draggable="true" data-expense-id="${item.id}" data-from-category="${item.categoryId}"`
+      : ''
 
   if (kind !== 'expense' || !hasSubs) {
-    return `<li class="ledger-row">${rowInner}</li>`
+    return `<li class="ledger-row${kind === 'expense' ? ' ledger-drag has-grip' : ''}"${dragAttrs}>${rowInner}</li>`
   }
 
   const nested = expanded
@@ -358,7 +379,7 @@ function ledgerRow(item, kind) {
 
   return `
     <li class="ledger-group has-subs${expanded ? ' is-expanded' : ''}">
-      <div class="ledger-row ledger-row-main">
+      <div class="ledger-row ledger-row-main ledger-drag has-grip"${dragAttrs}>
         ${rowInner}
       </div>
       ${nested}
@@ -418,7 +439,7 @@ function renderCategories() {
         `
 
     return `
-      <article class="category-card${wide ? ' wide' : ''}">
+      <article class="category-card${wide ? ' wide' : ''}" data-category-id="${category.id}">
         <div class="card-head">
           <div>
             <h3>${escapeHtml(category.name)}</h3>
@@ -431,6 +452,7 @@ function renderCategories() {
           </div>
         </div>
         ${body}
+        <p class="drop-hint" hidden>Soltar aquí</p>
       </article>
     `
   })
@@ -1149,6 +1171,214 @@ function changeMonth(delta) {
   goToMonth(next)
 }
 
+function announceDnd(message) {
+  if (!dndLiveEl) return
+  dndLiveEl.textContent = message
+}
+
+function draggedExpense() {
+  if (!dragExpenseId) return null
+  return currentMonth().expenses.find((entry) => entry.id === dragExpenseId) ?? null
+}
+
+function clearDropTargets() {
+  categoryGridEl?.querySelectorAll('.category-card.is-drop-target, .category-card.is-drop-invalid').forEach((card) => {
+    card.classList.remove('is-drop-target', 'is-drop-invalid')
+    const hint = card.querySelector('.drop-hint')
+    if (hint) {
+      hint.hidden = true
+      hint.textContent = 'Soltar aquí'
+    }
+  })
+}
+
+function restoreRowDraggable() {
+  categoryGridEl?.querySelectorAll('.ledger-drag').forEach((row) => {
+    row.setAttribute('draggable', 'true')
+  })
+}
+
+function endDrag() {
+  dragExpenseId = null
+  categoryGridEl?.classList.remove('is-reclassifying')
+  categoryGridEl?.querySelectorAll('.ledger-drag.is-dragging').forEach((row) => {
+    row.classList.remove('is-dragging')
+  })
+  clearDropTargets()
+  restoreRowDraggable()
+}
+
+function setDropTarget(card, valid) {
+  if (!card) {
+    clearDropTargets()
+    return
+  }
+  categoryGridEl.querySelectorAll('.category-card').forEach((other) => {
+    if (other === card) return
+    other.classList.remove('is-drop-target', 'is-drop-invalid')
+    const otherHint = other.querySelector('.drop-hint')
+    if (otherHint) otherHint.hidden = true
+  })
+  card.classList.add('is-drop-target')
+  card.classList.toggle('is-drop-invalid', !valid)
+  const hint = card.querySelector('.drop-hint')
+  if (hint) {
+    hint.textContent = valid ? 'Soltar aquí' : 'Ya está en esta categoría'
+    hint.hidden = false
+  }
+}
+
+function moveExpenseToCategory(expenseId, categoryId) {
+  const month = currentMonth()
+  const item = month.expenses.find((entry) => entry.id === expenseId)
+  const category = month.categories.find((entry) => entry.id === categoryId)
+  if (!item || !category) return false
+  if (item.categoryId === categoryId) return false
+  item.categoryId = categoryId
+  persist()
+  render()
+  showToast(`«${item.name}» se movió a ${category.name}.`)
+  announceDnd(`«${item.name}» ahora está en ${category.name}. El total del mes no cambia.`)
+  return true
+}
+
+function openMovePicker(id) {
+  const month = currentMonth()
+  const item = month.expenses.find((entry) => entry.id === id)
+  if (!item || !moveDialog) return
+  moveExpenseId = id
+  const message = document.querySelector('#move-message')
+  if (message) {
+    message.textContent = `¿A qué categoría mueves «${item.name}»? El total del mes no cambia; los subgastos viajan con la partida.`
+  }
+  const targets = document.querySelector('#move-targets')
+  const others = month.categories.filter((category) => category.id !== item.categoryId)
+  if (targets) {
+    if (others.length === 0) {
+      targets.innerHTML = `<div class="empty">No hay otra categoría a la que mover este gasto.</div>`
+    } else {
+      targets.innerHTML = others
+        .map(
+          (category) =>
+            `<button type="button" class="btn btn-secondary move-target" data-action="confirm-move" data-category="${category.id}">${escapeHtml(category.name)}</button>`,
+        )
+        .join('')
+    }
+  }
+  if (!moveDialog.open) moveDialog.showModal()
+}
+
+function cancelLongPress() {
+  window.clearTimeout(longPressTimer)
+  longPressTimer = 0
+  longPressStart = null
+}
+
+function onExpensePointerDown(event) {
+  const row = event.target.closest('.ledger-drag')
+  if (!row || !categoryGridEl.contains(row)) return
+  if (event.target.closest('.row-actions, .btn-add-sub, .btn-move, a, input, select, textarea')) {
+    row.setAttribute('draggable', 'false')
+    cancelLongPress()
+    return
+  }
+  row.setAttribute('draggable', 'true')
+  const pointerType = event.pointerType || (event.touches ? 'touch' : 'mouse')
+  if (pointerType === 'touch' || pointerType === 'pen') {
+    const point = event.touches?.[0] ?? event
+    longPressStart = { id: row.dataset.expenseId, x: point.clientX, y: point.clientY }
+    longPressTimer = window.setTimeout(() => {
+      const expenseId = longPressStart?.id
+      cancelLongPress()
+      if (expenseId) openMovePicker(expenseId)
+    }, 520)
+  }
+}
+
+function onExpensePointerMove(event) {
+  if (!longPressStart) return
+  const point = event.touches?.[0] ?? event
+  const dx = point.clientX - longPressStart.x
+  const dy = point.clientY - longPressStart.y
+  if (dx * dx + dy * dy > 100) cancelLongPress()
+}
+
+function onExpenseDragStart(event) {
+  const row = event.target.closest('.ledger-drag')
+  if (
+    !row ||
+    row.getAttribute('draggable') === 'false' ||
+    event.target.closest('.row-actions, .btn-add-sub, .btn-move')
+  ) {
+    event.preventDefault()
+    return
+  }
+  const id = row.dataset.expenseId
+  const item = currentMonth().expenses.find((entry) => entry.id === id)
+  if (!item) {
+    event.preventDefault()
+    return
+  }
+  cancelLongPress()
+  dragExpenseId = id
+  try {
+    event.dataTransfer.setData(DRAG_MIME, id)
+    event.dataTransfer.setData('text/plain', id)
+  } catch {
+    // Some browsers only allow text/plain.
+  }
+  event.dataTransfer.effectAllowed = 'move'
+  row.classList.add('is-dragging')
+  categoryGridEl.classList.add('is-reclassifying')
+  announceDnd(`Arrastrando «${item.name}». Suelta en otra categoría para reclasificarla.`)
+}
+
+function onExpenseDragEnd() {
+  endDrag()
+}
+
+function onCategoryDragOver(event) {
+  const types = Array.from(event.dataTransfer?.types ?? [])
+  const isExpenseDrag = Boolean(dragExpenseId) || types.includes(DRAG_MIME)
+  if (!isExpenseDrag) return
+  const card = event.target.closest?.('.category-card')
+  if (!card || !categoryGridEl.contains(card)) {
+    clearDropTargets()
+    return
+  }
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+  const item = draggedExpense()
+  const valid = Boolean(item && item.categoryId !== card.dataset.categoryId)
+  setDropTarget(card, valid)
+}
+
+function onCategoryDrop(event) {
+  const card = event.target.closest?.('.category-card')
+  if (!card || !categoryGridEl.contains(card)) return
+  event.preventDefault()
+  const expenseId =
+    dragExpenseId ||
+    event.dataTransfer?.getData(DRAG_MIME) ||
+    event.dataTransfer?.getData('text/plain')
+  const categoryId = card.dataset.categoryId
+  endDrag()
+  if (!expenseId || !categoryId) return
+  moveExpenseToCategory(expenseId, categoryId)
+}
+
+function onMoveDialogClick(event) {
+  const button = event.target.closest('[data-action]')
+  if (!button) return
+  if (button.dataset.action === 'confirm-move') {
+    const expenseId = moveExpenseId
+    const categoryId = button.dataset.category
+    moveDialog.close()
+    moveExpenseId = null
+    if (expenseId && categoryId) moveExpenseToCategory(expenseId, categoryId)
+  }
+}
+
 function onAppClick(event) {
   const button = event.target.closest('[data-action]')
   if (!button) return
@@ -1178,6 +1408,8 @@ function onAppClick(event) {
     openDetails(id)
   } else if (action === 'toggle-subgastos') {
     toggleSubgastos(id)
+  } else if (action === 'move-expense') {
+    openMovePicker(id)
   } else if (action === 'add-category') {
     openForm({ type: 'category' })
   } else if (action === 'edit-category') {
@@ -1230,6 +1462,23 @@ function bindEvents() {
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
+  categoryGridEl.addEventListener('dragstart', onExpenseDragStart)
+  categoryGridEl.addEventListener('dragend', onExpenseDragEnd)
+  categoryGridEl.addEventListener('dragover', onCategoryDragOver)
+  categoryGridEl.addEventListener('dragleave', (event) => {
+    if (!categoryGridEl.contains(event.relatedTarget)) clearDropTargets()
+  })
+  categoryGridEl.addEventListener('drop', onCategoryDrop)
+  categoryGridEl.addEventListener('pointerdown', onExpensePointerDown)
+  categoryGridEl.addEventListener('pointermove', onExpensePointerMove)
+  categoryGridEl.addEventListener('pointerup', () => {
+    cancelLongPress()
+    restoreRowDraggable()
+  })
+  categoryGridEl.addEventListener('pointercancel', () => {
+    cancelLongPress()
+    restoreRowDraggable()
+  })
   itemForm.addEventListener('submit', onSubmitForm)
   document.querySelector('#form-cancel').addEventListener('click', () => formDialog.close())
   document.querySelector('#form-close')?.addEventListener('click', () => formDialog.close())
@@ -1258,9 +1507,13 @@ function bindEvents() {
   document.querySelector('#details-close')?.addEventListener('click', () => detailsDialog?.close())
   document.querySelector('#suggest-monthly')?.addEventListener('click', () => applySuggestion('monthly'))
   document.querySelector('#suggest-expected')?.addEventListener('click', () => applySuggestion('expected'))
+  moveDialog?.addEventListener('click', onMoveDialogClick)
+  document.querySelector('#move-cancel')?.addEventListener('click', () => moveDialog?.close())
+  document.querySelector('#move-close')?.addEventListener('click', () => moveDialog?.close())
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
   closeOnBackdrop(detailsDialog)
+  closeOnBackdrop(moveDialog)
   document.querySelector('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault()
     const action = confirmContext
