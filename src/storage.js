@@ -1,5 +1,11 @@
 import { STORAGE_KEY, SEEDED_MONTH, createOctoberSeed, createEmptyMonth } from './seed.js'
 import { newId } from './format.js'
+import {
+  DEFAULT_EXCHANGE_RATE,
+  convertCents,
+  isValidRate,
+  normalizeCurrency,
+} from './money.js'
 
 export function looksLikeCardName(name) {
   const text = String(name ?? '')
@@ -13,7 +19,60 @@ export function normalizeCharge(raw) {
   const amount = Number(raw.amount)
   if (!Number.isFinite(amount) || amount < 0) return null
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : newId('chg')
-  return { id, name, amount: Math.round(amount) }
+  return {
+    id,
+    name,
+    amount: Math.round(amount),
+    currency: normalizeCurrency(raw.currency),
+  }
+}
+
+export function emptyDetails() {
+  return {
+    accountNumber: '',
+    monthlyUsd: null,
+    monthlyNio: null,
+    expectedUsd: null,
+    expectedNio: null,
+    notes: '',
+  }
+}
+
+function normalizeOptionalCents(value) {
+  if (value == null || value === '') return null
+  const amount = Number(value)
+  if (!Number.isFinite(amount) || amount < 0) return null
+  return Math.round(amount)
+}
+
+export function normalizeDetails(raw) {
+  if (!raw || typeof raw !== 'object') return emptyDetails()
+  return {
+    accountNumber: String(raw.accountNumber ?? '').trim().slice(0, 80),
+    monthlyUsd: normalizeOptionalCents(raw.monthlyUsd),
+    monthlyNio: normalizeOptionalCents(raw.monthlyNio),
+    expectedUsd: normalizeOptionalCents(raw.expectedUsd),
+    expectedNio: normalizeOptionalCents(raw.expectedNio),
+    notes: String(raw.notes ?? '').slice(0, 2000),
+  }
+}
+
+export function detailsAreEmpty(details) {
+  const d = normalizeDetails(details)
+  return (
+    !d.accountNumber &&
+    d.monthlyUsd == null &&
+    d.monthlyNio == null &&
+    d.expectedUsd == null &&
+    d.expectedNio == null &&
+    !d.notes.trim()
+  )
+}
+
+export function normalizeIncome(raw) {
+  if (!raw || typeof raw !== 'object') return raw
+  raw.currency = normalizeCurrency(raw.currency)
+  return raw
 }
 
 export function normalizeExpense(raw) {
@@ -21,6 +80,8 @@ export function normalizeExpense(raw) {
   const hasExplicit = typeof raw.isCard === 'boolean'
   raw.isCard = hasExplicit ? raw.isCard : looksLikeCardName(raw.name)
   raw.charges = Array.isArray(raw.charges) ? raw.charges.map(normalizeCharge).filter(Boolean) : []
+  raw.currency = normalizeCurrency(raw.currency)
+  raw.details = normalizeDetails(raw.details)
   return raw
 }
 
@@ -29,6 +90,10 @@ export function normalizeMonth(month) {
   if (!Array.isArray(month.incomes)) month.incomes = []
   if (!Array.isArray(month.categories)) month.categories = []
   if (!Array.isArray(month.expenses)) month.expenses = []
+  if (!Object.prototype.hasOwnProperty.call(month, 'exchangeRate') || month.exchangeRate === undefined) {
+    month.exchangeRate = DEFAULT_EXCHANGE_RATE
+  }
+  month.incomes.forEach(normalizeIncome)
   month.expenses.forEach(normalizeExpense)
   return month
 }
@@ -44,14 +109,31 @@ export function normalizeState(state) {
   return state
 }
 
-export function sumCharges(expense) {
-  return (expense?.charges ?? []).reduce((sum, charge) => sum + (charge.amount || 0), 0)
+export function sumCharges(expense, rate, targetCurrency) {
+  const target = normalizeCurrency(targetCurrency ?? expense?.currency)
+  let total = 0
+  for (const charge of expense?.charges ?? []) {
+    const converted = convertCents(charge.amount, charge.currency, target, rate)
+    if (converted == null) return null
+    total += converted
+  }
+  return total
 }
 
-export function cardSummary(expense) {
+export function cardSummary(expense, rate) {
+  const currency = normalizeCurrency(expense?.currency)
   const pago = expense?.amount || 0
-  const cargado = sumCharges(expense)
-  return { pago, cargado, disponible: pago - cargado }
+  const needsRate = (expense?.charges ?? []).some(
+    (charge) => normalizeCurrency(charge.currency) !== currency,
+  )
+  if (needsRate && !isValidRate(rate)) {
+    return { pago, cargado: null, disponible: null, currency, ok: false }
+  }
+  const cargado = sumCharges(expense, rate, currency)
+  if (cargado == null) {
+    return { pago, cargado: null, disponible: null, currency, ok: false }
+  }
+  return { pago, cargado, disponible: pago - cargado, currency, ok: true }
 }
 
 export function createInitialState() {

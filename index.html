@@ -71,22 +71,45 @@
         <main id="contenido" class="view view-budget">
           <h1 class="page-title">Presupuesto de <span id="month-title">octubre 2026</span></h1>
 
+          <section class="fx-panel" aria-labelledby="fx-title">
+            <div class="fx-copy">
+              <h2 id="fx-title">Tasa de cambio del mes</h2>
+              <p>Córdobas por 1 dólar. Puedes editarla; no es una tasa oficial ni en vivo.</p>
+            </div>
+            <label class="field fx-field">
+              <span>C$ por 1 USD</span>
+              <input
+                id="field-rate"
+                name="exchangeRate"
+                type="text"
+                inputmode="decimal"
+                placeholder="36.6"
+                autocomplete="off"
+              />
+            </label>
+          </section>
+          <p id="fx-error" class="form-error fx-error" hidden></p>
+
           <section class="statement" aria-label="Totales del mes">
             <article class="stat stat-income">
               <p class="stat-label">Ingresos</p>
               <strong class="stat-value" id="total-income">$0.00</strong>
+              <span class="stat-alt" id="total-income-alt"></span>
               <span class="stat-hint">Lo que entra</span>
             </article>
             <article class="stat stat-expense">
               <p class="stat-label">Gastos</p>
               <strong class="stat-value" id="total-expenses">$0.00</strong>
+              <span class="stat-alt" id="total-expenses-alt"></span>
               <span class="stat-hint">Lo que sale</span>
             </article>
             <article class="stat stat-net">
               <p class="stat-label">Balance</p>
               <strong class="stat-value" id="total-net">$0.00</strong>
+              <span class="stat-alt" id="total-net-alt"></span>
               <span class="stat-hint" id="net-note"></span>
             </article>
+            <p class="statement-note" id="fx-note">Totales en dólares, usando la tasa de este mes.</p>
           </section>
 
           <section class="panel" aria-labelledby="ingresos-title">
@@ -105,8 +128,9 @@
               <div>
                 <h2 id="gastos-title">Gastos por casa</h2>
                 <p>
-                  Cada partida se edita o se quita. En una tarjeta, el mes cuenta solo el pago; los
-                  cargos van por dentro.
+                  Cada partida se edita o se quita. En <strong>Ver detalles</strong> anotas la cuenta,
+                  la mensualidad y los subgastos. El mes cuenta solo el monto de la línea; los
+                  subgastos descuentan de esa partida, no del total del hogar.
                 </p>
               </div>
               <div class="section-actions">
@@ -140,10 +164,19 @@
           <input id="field-name" name="name" type="text" autocomplete="off" required maxlength="80" />
         </label>
 
-        <label class="field" data-field="amount">
-          <span>Monto en dólares</span>
-          <input id="field-amount" name="amount" type="text" inputmode="decimal" placeholder="0.00" />
-        </label>
+        <div class="money-row" data-field="amount">
+          <label class="field">
+            <span id="amount-label">Monto en dólares</span>
+            <input id="field-amount" name="amount" type="text" inputmode="decimal" placeholder="0.00" />
+          </label>
+          <label class="field">
+            <span>Moneda</span>
+            <select id="field-currency" name="currency">
+              <option value="USD">Dólares ($)</option>
+              <option value="NIO">Córdobas (C$)</option>
+            </select>
+          </label>
+        </div>
 
         <label class="field" data-field="category">
           <span>Categoría</span>
@@ -159,11 +192,12 @@
           <input id="field-is-card" name="isCard" type="checkbox" />
           <span>
             Es pago de tarjeta
-            <small>Los cargos de la tarjeta se anotan aparte y no se suman otra vez a los gastos del mes.</small>
+            <small>Cualquier partida puede tener subgastos en Ver detalles; no se suman otra vez al mes.</small>
           </span>
         </label>
 
         <div class="form-actions">
+          <button type="button" class="btn btn-ghost hidden" id="form-open-details">Ver detalles</button>
           <button type="button" class="btn btn-ghost" id="form-cancel">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="form-save">Guardar</button>
         </div>
@@ -218,7 +252,7 @@
               />
             </label>
             <label class="field">
-              <span>Monto</span>
+              <span id="charge-amount-label">Monto</span>
               <input
                 id="charge-amount"
                 name="chargeAmount"
@@ -227,6 +261,13 @@
                 placeholder="0.00"
               />
             </label>
+            <label class="field">
+              <span>Moneda</span>
+              <select id="charge-currency" name="chargeCurrency">
+                <option value="USD">Dólares ($)</option>
+                <option value="NIO">Córdobas (C$)</option>
+              </select>
+            </label>
           </div>
           <div class="form-actions">
             <button type="button" class="btn btn-ghost hidden" id="charge-cancel-edit">Cancelar edición</button>
@@ -234,6 +275,124 @@
           </div>
         </form>
       </div>
+    </dialog>
+
+    <dialog id="details-dialog" aria-labelledby="details-title" aria-describedby="details-lede">
+      <form id="details-form" novalidate>
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Detalle del gasto</p>
+            <h2 id="details-title">Gasto</h2>
+            <p id="details-lede">
+              Anota la cuenta, la mensualidad y lo esperado este ciclo. Estos montos no se suman otra
+              vez al total del mes: el presupuesto sigue usando el monto de la partida.
+            </p>
+          </div>
+          <button type="button" class="icon-btn dialog-close" id="details-close" aria-label="Cerrar">×</button>
+        </div>
+
+        <p class="details-main-note">
+          El mes cuenta <strong id="details-main-amount">$0.00</strong> en esta partida.
+        </p>
+
+        <div id="details-empty" class="empty empty-block">
+          <p>
+            Todavía no hay detalles para este gasto. Escribe el número de cuenta, la mensualidad o el
+            pago esperado cuando los tengas.
+          </p>
+        </div>
+
+        <p id="details-error" class="form-error" hidden></p>
+        <p id="details-success" class="form-success" hidden role="status">Detalles guardados.</p>
+
+        <label class="field">
+          <span>Número de cuenta</span>
+          <input
+            id="detail-account"
+            name="accountNumber"
+            type="text"
+            autocomplete="off"
+            maxlength="80"
+            placeholder="Opcional"
+          />
+        </label>
+
+        <fieldset class="detail-block">
+          <legend>Mensualidad</legend>
+          <p class="detail-hint">Lo que se paga todos los meses.</p>
+          <div class="amount-pair">
+            <label class="field">
+              <span>Dólares (USD)</span>
+              <input
+                id="detail-monthly-usd"
+                name="monthlyUsd"
+                type="text"
+                inputmode="decimal"
+                placeholder="0.00"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Córdobas (C$)</span>
+              <input
+                id="detail-monthly-nio"
+                name="monthlyNio"
+                type="text"
+                inputmode="decimal"
+                placeholder="0.00"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+          <button type="button" class="btn btn-tiny" id="suggest-monthly" hidden></button>
+        </fieldset>
+
+        <fieldset class="detail-block">
+          <legend>Pago esperado de este ciclo</legend>
+          <p class="detail-hint">Si este mes es distinto de la mensualidad, anótalo aquí.</p>
+          <div class="amount-pair">
+            <label class="field">
+              <span>Dólares (USD)</span>
+              <input
+                id="detail-expected-usd"
+                name="expectedUsd"
+                type="text"
+                inputmode="decimal"
+                placeholder="0.00"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field">
+              <span>Córdobas (C$)</span>
+              <input
+                id="detail-expected-nio"
+                name="expectedNio"
+                type="text"
+                inputmode="decimal"
+                placeholder="0.00"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+          <button type="button" class="btn btn-tiny" id="suggest-expected" hidden></button>
+        </fieldset>
+
+        <label class="field">
+          <span>Notas adicionales</span>
+          <textarea
+            id="detail-notes"
+            name="notes"
+            rows="4"
+            maxlength="2000"
+            placeholder="Recordatorios, recibos, acuerdos…"
+          ></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="details-cancel">Cerrar</button>
+          <button type="submit" class="btn btn-primary" id="details-save">Guardar</button>
+        </div>
+      </form>
     </dialog>
 
     <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">

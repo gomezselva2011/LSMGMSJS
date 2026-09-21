@@ -49,14 +49,15 @@ export function formatCreateNextLabel(monthKey) {
   return year === fromYear ? `Crear ${name}` : `Crear ${name} ${year}`
 }
 
-export function formatMoney(cents) {
+export function formatMoney(cents, currency = 'USD') {
   const sign = cents < 0 ? '−' : ''
   const abs = Math.abs(cents) / 100
   const formatted = abs.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
-  return `${sign}$${formatted}`
+  const prefix = currency === 'NIO' ? 'C$' : '$'
+  return `${sign}${prefix}${formatted}`
 }
 
 export function formatDueDay(dueDay, monthKey) {
@@ -72,7 +73,8 @@ export function dollarsToCents(value) {
 }
 
 export function centsToInput(cents) {
-  return (cents / 100).toFixed(2)
+  if (cents == null || !Number.isFinite(Number(cents))) return ''
+  return (Number(cents) / 100).toFixed(2)
 }
 
 export function escapeHtml(value) {

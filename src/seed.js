@@ -1,5 +1,7 @@
 /** October 2026 household budget. Amounts are integer cents. */
 
+import { DEFAULT_EXCHANGE_RATE } from './money.js'
+
 export const HOUSEHOLD = 'Melissa y Lenin'
 export const SEEDED_MONTH = '2026-10'
 export const STORAGE_KEY = 'gastos-hogar-v1'
@@ -10,6 +12,7 @@ export const CATEGORY_OTROS = 'cat-otros'
 
 export function createOctoberSeed() {
   return {
+    exchangeRate: DEFAULT_EXCHANGE_RATE,
     incomes: [
       {
         id: 'inc-melissa-1',
@@ -79,6 +82,7 @@ export function createOctoberSeed() {
 
 export function createEmptyMonth() {
   return {
+    exchangeRate: DEFAULT_EXCHANGE_RATE,
     incomes: [],
     categories: [
       { id: CATEGORY_SAN_ANDRES, name: 'Casa San Andrés' },

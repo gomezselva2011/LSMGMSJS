@@ -84,7 +84,8 @@ body::before {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -461,6 +462,73 @@ p {
   min-height: 1.3em;
 }
 
+.stat-alt {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: var(--text-sm);
+}
+
+.statement-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.8rem 1.3rem 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.statement.is-fx-error .stat-value,
+.statement.is-fx-error .statement-note {
+  color: var(--rose);
+}
+
+.fx-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.15rem;
+  margin: 0 0 0.85rem;
+}
+
+.fx-copy h2 {
+  font-size: 1.15rem;
+}
+
+.fx-copy p,
+.fx-error {
+  margin-top: 0.2rem;
+}
+
+.fx-copy p {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.fx-field {
+  min-width: 8.75rem;
+  max-width: 10.5rem;
+  flex: none;
+}
+
+.fx-error {
+  margin: 0 0 0.85rem;
+}
+
+.money-row {
+  display: grid;
+  grid-template-columns: 1fr 11rem;
+  gap: 0.65rem;
+}
+
 .stat-net.is-negative {
   background: var(--rose-soft);
 }
@@ -662,6 +730,28 @@ p {
   min-width: 0;
 }
 
+button.ledger-name {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 650;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 0;
+  width: max-content;
+  max-width: 100%;
+  border-radius: 0;
+}
+
+button.ledger-name:hover {
+  color: var(--terracotta-deep);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .ledger-date {
   grid-area: date;
   color: var(--muted);
@@ -671,12 +761,28 @@ p {
 
 .ledger-amount {
   grid-area: amount;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.12rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   text-align: right;
   min-width: 7.2rem;
   font-size: 1.05rem;
   letter-spacing: -0.02em;
+}
+
+.ledger-remain {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  letter-spacing: 0;
+  color: var(--pine);
+}
+
+.ledger-remain.is-over {
+  color: var(--rose);
 }
 
 .ledger-row .row-actions {
@@ -744,8 +850,11 @@ dialog::backdrop {
   background: rgb(18 24 21 / 0.52);
 }
 
-#card-dialog {
+#card-dialog,
+#details-dialog {
   width: min(40rem, calc(100vw - 1.5rem));
+  max-height: min(92vh, 58rem);
+  overflow: auto;
 }
 
 #item-form,
@@ -754,6 +863,12 @@ dialog::backdrop {
   display: grid;
   gap: 0.9rem;
   padding: 1.15rem 1.2rem 1.15rem;
+}
+
+#details-form,
+#charge-form {
+  display: grid;
+  gap: 0.9rem;
 }
 
 .dialog-head,
@@ -780,7 +895,8 @@ dialog::backdrop {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   min-height: var(--touch);
@@ -788,8 +904,15 @@ dialog::backdrop {
   background: #fff;
 }
 
+.field textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+  line-height: 1.45;
+}
+
 .field input:focus,
 .field select:focus,
+.field textarea:focus,
 .icon-btn:focus-visible,
 .btn:focus-visible,
 .month-chip-btn:focus-visible,
@@ -833,6 +956,66 @@ dialog::backdrop {
   font-weight: 600;
 }
 
+.form-success {
+  background: var(--pine-soft);
+  color: var(--pine);
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.details-main-note,
+.detail-hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.details-main-note {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+}
+
+.details-main-note strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-block {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem 0.9rem;
+  background: var(--paper);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.detail-block legend {
+  font-family: var(--font-serif);
+  font-weight: 620;
+  padding: 0 0.35rem;
+}
+
+.amount-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.details-mark {
+  color: var(--pine);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+#details-form .empty {
+  margin: 0;
+  width: 100%;
+}
+
 .form-actions {
   justify-content: flex-end;
   margin-top: 0.2rem;
@@ -861,6 +1044,11 @@ dialog::backdrop {
   font-size: var(--text-sm);
 }
 
+.card-stats article.is-negative strong,
+.card-stats article.is-negative span {
+  color: var(--rose);
+}
+
 .card-stats strong,
 .chart-value {
   display: block;
@@ -872,7 +1060,7 @@ dialog::backdrop {
 
 .charge-form-row {
   display: grid;
-  grid-template-columns: 1fr 8rem;
+  grid-template-columns: 1fr 7.5rem 10rem;
   gap: 0.65rem;
 }
 
@@ -971,8 +1159,20 @@ dialog::backdrop {
 @media (max-width: 860px) {
   .statement,
   .category-grid,
-  .card-stats {
+  .card-stats,
+  .fx-panel,
+  .money-row,
+  .amount-pair {
     grid-template-columns: 1fr;
+  }
+
+  .fx-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fx-field {
+    max-width: none;
   }
 
   .stat + .stat {
@@ -1115,7 +1315,8 @@ dialog::backdrop {
 
   .section-actions,
   .form-actions,
-  .charge-form-row {
+  .charge-form-row,
+  .money-row {
     width: 100%;
     grid-template-columns: 1fr;
   }

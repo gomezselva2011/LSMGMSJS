@@ -1,8 +1,13 @@
 import './style.css'
 import { createOctoberSeed, SEEDED_MONTH, cloneMonth } from './seed.js'
 import {
+  cardSummary,
   createInitialState,
+  detailsAreEmpty,
+  emptyDetails,
   loadState,
+  looksLikeCardName,
+  normalizeDetails,
   saveState,
   storageAvailable,
 } from './storage.js'
@@ -18,6 +23,15 @@ import {
   newId,
   shiftMonth,
 } from './format.js'
+import {
+  categoryTotalUsd,
+  convertCents,
+  formatRate,
+  isValidRate,
+  monthTotals,
+  normalizeCurrency,
+  parseRate,
+} from './money.js'
 
 const bootEl = document.querySelector('#boot')
 const fatalEl = document.querySelector('#fatal')
@@ -29,6 +43,10 @@ const categoryGridEl = document.querySelector('#category-grid')
 const formDialog = document.querySelector('#form-dialog')
 const confirmDialog = document.querySelector('#confirm-dialog')
 const itemForm = document.querySelector('#item-form')
+const cardDialog = document.querySelector('#card-dialog')
+const chargeForm = document.querySelector('#charge-form')
+const detailsDialog = document.querySelector('#details-dialog')
+const detailsForm = document.querySelector('#details-form')
 
 const toastEl = document.querySelector('#toast')
 
@@ -38,15 +56,13 @@ let persistWarning = ''
 let formContext = null
 let confirmContext = null
 let toastTimer = 0
+let currentView = 'budget'
+let cardExpenseId = null
+let chargeEditId = null
+let detailsExpenseId = null
 
 function currentMonth() {
   return state.months[state.currentMonth]
-}
-
-function totals(month) {
-  const income = month.incomes.reduce((sum, item) => sum + item.amount, 0)
-  const expenses = month.expenses.reduce((sum, item) => sum + item.amount, 0)
-  return { income, expenses, net: income - expenses }
 }
 
 function persist() {
@@ -174,34 +190,101 @@ function renderBanner() {
   bannerEl.setAttribute('role', 'alert')
 }
 
+function rateErrorMessage(raw) {
+  const text = String(raw ?? '').trim()
+  if (!text) {
+    return 'Indica la tasa de este mes (córdobas por 1 dólar). Sin una tasa mayor que 0 no se pueden sumar los totales.'
+  }
+  return 'La tasa tiene que ser un número mayor que 0. Por ejemplo 36.6. No puede ser 0.'
+}
+
+function renderFxField() {
+  const input = document.querySelector('#field-rate')
+  const errorEl = document.querySelector('#fx-error')
+  if (!input) return
+  const rate = currentMonth().exchangeRate
+  const valid = isValidRate(rate)
+  if (document.activeElement !== input) {
+    input.value = valid ? formatRate(rate) : rate == null || rate === '' ? '' : String(rate)
+  }
+  input.setAttribute('aria-invalid', valid ? 'false' : 'true')
+  if (errorEl) {
+    errorEl.hidden = valid
+    errorEl.textContent = valid ? '' : rateErrorMessage(input.value)
+  }
+}
+
 function renderSummary() {
   const month = currentMonth()
-  const { income, expenses, net } = totals(month)
+  const totals = monthTotals(month)
   const netCard = document.querySelector('.stat-net')
+  const statement = document.querySelector('.statement')
+  const incomeEl = document.querySelector('#total-income')
+  const expensesEl = document.querySelector('#total-expenses')
+  const netEl = document.querySelector('#total-net')
+  const incomeAlt = document.querySelector('#total-income-alt')
+  const expensesAlt = document.querySelector('#total-expenses-alt')
+  const netAlt = document.querySelector('#total-net-alt')
+  const fxNote = document.querySelector('#fx-note')
+  const note = document.querySelector('#net-note')
+
   document.querySelector('#month-title').textContent = formatMonthTitle(state.currentMonth)
   document.querySelector('#month-chip').textContent = formatMonthLabel(state.currentMonth)
-  document.querySelector('#total-income').textContent = formatMoney(income)
-  document.querySelector('#total-expenses').textContent = formatMoney(expenses)
-  document.querySelector('#total-net').textContent = formatMoney(net)
-  netCard.classList.toggle('is-negative', net < 0)
-  netCard.classList.toggle('is-positive', net > 0)
+  renderFxField()
+
+  statement?.classList.toggle('is-fx-error', !totals.ok)
+
+  if (!totals.ok) {
+    incomeEl.textContent = '—'
+    expensesEl.textContent = '—'
+    netEl.textContent = '—'
+    if (incomeAlt) incomeAlt.textContent = ''
+    if (expensesAlt) expensesAlt.textContent = ''
+    if (netAlt) netAlt.textContent = ''
+    netCard.classList.remove('is-negative', 'is-positive')
+    if (fxNote) {
+      fxNote.textContent = rateErrorMessage(month.exchangeRate)
+    }
+    if (note) note.textContent = 'Corrige la tasa para ver el balance de este mes.'
+    renderCreateNext()
+    renderSavedMonths()
+    return
+  }
+
+  incomeEl.textContent = formatMoney(totals.incomeUsd, 'USD')
+  expensesEl.textContent = formatMoney(totals.expensesUsd, 'USD')
+  netEl.textContent = formatMoney(totals.netUsd, 'USD')
+  if (incomeAlt) {
+    incomeAlt.textContent = totals.incomeNio == null ? '' : formatMoney(totals.incomeNio, 'NIO')
+  }
+  if (expensesAlt) {
+    expensesAlt.textContent = totals.expensesNio == null ? '' : formatMoney(totals.expensesNio, 'NIO')
+  }
+  if (netAlt) {
+    netAlt.textContent = totals.netNio == null ? '' : formatMoney(totals.netNio, 'NIO')
+  }
+  netCard.classList.toggle('is-negative', totals.netUsd < 0)
+  netCard.classList.toggle('is-positive', totals.netUsd > 0)
+  if (fxNote) {
+    fxNote.textContent = 'Totales en dólares, usando la tasa de este mes.'
+  }
   renderCreateNext()
   renderSavedMonths()
-  const note = document.querySelector('#net-note')
-  if (income === 0 && expenses === 0) {
+  if (totals.incomeUsd === 0 && totals.expensesUsd === 0) {
     note.textContent = 'Añade ingresos y gastos para ver el balance de este mes.'
-  } else if (net < 0) {
+  } else if (totals.netUsd < 0) {
     note.textContent = 'Este mes el hogar gasta más de lo que entra.'
-  } else if (net === 0) {
+  } else if (totals.netUsd === 0) {
     note.textContent = 'Ingresos y gastos quedan a mano.'
   } else {
     note.textContent = 'Queda un margen después de los gastos del mes.'
   }
 }
 
-function rowActions(kind, id) {
+function rowActions(kind, id, extra = '') {
   return `
     <div class="row-actions">
+      ${extra}
       <button type="button" class="btn btn-row" data-action="edit-${kind}" data-id="${id}">Editar</button>
       <button type="button" class="btn btn-row" data-action="delete-${kind}" data-id="${id}">Eliminar</button>
     </div>
@@ -210,12 +293,23 @@ function rowActions(kind, id) {
 
 function ledgerRow(item, kind) {
   const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
+  const detailsMark =
+    kind === 'expense' && !detailsAreEmpty(item.details)
+      ? '<span class="details-mark">Con detalles</span>'
+      : ''
+  const cardBtn = item.isCard
+    ? `<button type="button" class="btn btn-row" data-action="open-card" data-id="${item.id}">Cargos</button>`
+    : ''
+  const detailsBtn =
+    kind === 'expense'
+      ? `<button type="button" class="btn btn-row" data-action="open-details" data-id="${item.id}">Ver detalles</button>`
+      : ''
   return `
     <li class="ledger-row">
-      <span class="ledger-name">${escapeHtml(item.name)}${badge}</span>
+      <span class="ledger-name">${escapeHtml(item.name)}${badge}${detailsMark}</span>
       <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
-      <span class="ledger-amount">${formatMoney(item.amount)}</span>
-      ${rowActions(kind, item.id)}
+      <span class="ledger-amount">${formatMoney(item.amount, item.currency)}</span>
+      ${rowActions(kind, item.id, `${detailsBtn}${cardBtn}`)}
     </li>
   `
 }
@@ -240,12 +334,6 @@ function renderIncomes() {
   `
 }
 
-function categoryTotal(month, categoryId) {
-  return month.expenses
-    .filter((item) => item.categoryId === categoryId)
-    .reduce((sum, item) => sum + item.amount, 0)
-}
-
 function renderCategories() {
   const month = currentMonth()
   if (month.categories.length === 0) {
@@ -263,6 +351,8 @@ function renderCategories() {
       .filter((item) => item.categoryId === category.id)
       .sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99) || a.name.localeCompare(b.name, 'es'))
     const wide = month.categories.length % 2 === 1 && index === month.categories.length - 1
+    const totalUsd = categoryTotalUsd(month, category.id)
+    const totalLabel = totalUsd == null ? '—' : formatMoney(totalUsd, 'USD')
     const body =
       expenses.length === 0
         ? `<div class="empty empty-block">
@@ -280,7 +370,7 @@ function renderCategories() {
         <div class="card-head">
           <div>
             <h3>${escapeHtml(category.name)}</h3>
-            <strong class="category-total">${formatMoney(categoryTotal(month, category.id))}</strong>
+            <strong class="category-total">${totalLabel}</strong>
           </div>
           <div class="row-actions">
             <button type="button" class="btn btn-row" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
@@ -296,10 +386,97 @@ function renderCategories() {
   categoryGridEl.innerHTML = cards.join('')
 }
 
+function setView(view) {
+  currentView = view === 'analytics' ? 'analytics' : 'budget'
+  const budget = document.querySelector('.view-budget')
+  const analytics = document.querySelector('#analytics')
+  if (budget) budget.hidden = currentView !== 'budget'
+  if (analytics) analytics.hidden = currentView !== 'analytics'
+  renderViewTabs()
+  if (currentView === 'analytics') renderAnalytics()
+}
+
 function renderViewTabs() {
   const tabs = document.querySelector('#view-tabs')
   if (!tabs) return
-  tabs.hidden = tabs.children.length === 0
+  tabs.hidden = false
+  tabs.innerHTML = `
+    <button type="button" class="view-tab${currentView === 'budget' ? ' is-current' : ''}" data-action="show-view" data-view="budget" ${currentView === 'budget' ? 'aria-current="page"' : ''}>Presupuesto</button>
+    <button type="button" class="view-tab${currentView === 'analytics' ? ' is-current' : ''}" data-action="show-view" data-view="analytics" ${currentView === 'analytics' ? 'aria-current="page"' : ''}>Analítica</button>
+  `
+}
+
+function chartColumns(series, valueKey, barClass) {
+  const max = Math.max(1, ...series.map((item) => (item.ok ? Math.abs(item[valueKey]) : 0)))
+  return series
+    .map((item) => {
+      if (!item.ok) {
+        return `
+          <div class="chart-col">
+            <span class="chart-bar-label">Sin tasa</span>
+            <span class="chart-bar ${barClass}" style="height:4px;opacity:.35"></span>
+            <span class="chart-axis-label">${escapeHtml(item.label)}</span>
+          </div>
+        `
+      }
+      const value = item[valueKey]
+      const height = Math.max(4, Math.round((Math.abs(value) / max) * 160))
+      const extra =
+        valueKey === 'netUsd' ? (value < 0 ? ' is-net-neg' : ' is-net-pos') : barClass ? ` ${barClass}` : ''
+      return `
+        <div class="chart-col">
+          <span class="chart-bar-label">${formatMoney(value, 'USD')}</span>
+          <span class="chart-bar${extra}" style="height:${height}px"></span>
+          <span class="chart-axis-label">${escapeHtml(item.label)}</span>
+        </div>
+      `
+    })
+    .join('')
+}
+
+function renderAnalytics() {
+  const el = document.querySelector('#analytics')
+  if (!el) return
+  const series = savedMonthKeys().map((key) => {
+    const totals = monthTotals(state.months[key])
+    return { key, label: formatMonthLabel(key), ...totals }
+  })
+
+  el.innerHTML = `
+    <h1 id="analytics-title">Analítica</h1>
+    <p class="chart-caption">Barras en dólares. Cada mes usa su propia tasa de cambio, para poder compararlos.</p>
+    <section class="chart-card">
+      <div class="chart-head">
+        <div>
+          <h2>Ingresos</h2>
+          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
+        </div>
+      </div>
+      <div class="chart-plot">${chartColumns(series, 'incomeUsd', 'is-income')}</div>
+    </section>
+    <section class="chart-card">
+      <div class="chart-head">
+        <div>
+          <h2>Gastos</h2>
+          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
+        </div>
+      </div>
+      <div class="chart-plot">${chartColumns(series, 'expensesUsd', '')}</div>
+    </section>
+    <section class="chart-card">
+      <div class="chart-head">
+        <div>
+          <h2>Balance</h2>
+          <p class="chart-caption">Totales en dólares, usando la tasa de cada mes.</p>
+        </div>
+      </div>
+      <div class="chart-plot">${chartColumns(series, 'netUsd', '')}</div>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-swatch is-net-pos"></span> Sobran dólares</span>
+        <span class="legend-item"><span class="legend-swatch is-net-neg"></span> Faltan dólares</span>
+      </div>
+    </section>
+  `
 }
 
 function render() {
@@ -308,6 +485,12 @@ function render() {
   renderIncomes()
   renderCategories()
   renderViewTabs()
+  const budget = document.querySelector('.view-budget')
+  const analytics = document.querySelector('#analytics')
+  if (budget) budget.hidden = currentView !== 'budget'
+  if (analytics) analytics.hidden = currentView !== 'analytics'
+  if (currentView === 'analytics') renderAnalytics()
+  if (cardDialog?.open && cardExpenseId) renderCardDialog()
 }
 
 function setFieldVisibility(names) {
@@ -325,6 +508,20 @@ function fillCategorySelect(selectedId) {
         `<option value="${escapeHtml(category.id)}" ${category.id === selectedId ? 'selected' : ''}>${escapeHtml(category.name)}</option>`,
     )
     .join('')
+}
+
+function syncAmountLabel() {
+  const currency = document.querySelector('#field-currency')?.value
+  const label = document.querySelector('#amount-label')
+  if (!label) return
+  label.textContent = currency === 'NIO' ? 'Monto en córdobas' : 'Monto en dólares'
+}
+
+function syncChargeAmountLabel() {
+  const currency = document.querySelector('#charge-currency')?.value
+  const label = document.querySelector('#charge-amount-label')
+  if (!label) return
+  label.textContent = currency === 'NIO' ? 'Monto en córdobas' : 'Monto en dólares'
 }
 
 function showFormError(message) {
@@ -352,7 +549,11 @@ function openForm(context) {
   const nameInput = document.querySelector('#field-name')
   const amountInput = document.querySelector('#field-amount')
   const dueInput = document.querySelector('#field-due')
+  const currencySelect = document.querySelector('#field-currency')
+  const cardCheck = document.querySelector('#field-is-card')
+  const openDetailsBtn = document.querySelector('#form-open-details')
   showFormError('')
+  openDetailsBtn?.classList.toggle('hidden', !(context.type === 'expense' && context.item))
 
   if (context.type === 'income') {
     title.textContent = context.item ? 'Editar ingreso' : 'Añadir ingreso'
@@ -360,19 +561,27 @@ function openForm(context) {
     nameInput.value = context.item?.name ?? ''
     amountInput.value = context.item ? centsToInput(context.item.amount) : ''
     dueInput.value = context.item?.dueDay ?? ''
+    if (currencySelect) currencySelect.value = normalizeCurrency(context.item?.currency)
   } else if (context.type === 'expense') {
     title.textContent = context.item ? 'Editar gasto' : 'Añadir gasto'
-    setFieldVisibility(['amount', 'category', 'dueDay'])
+    setFieldVisibility(['amount', 'category', 'dueDay', 'isCard'])
     fillCategorySelect(context.item?.categoryId ?? context.categoryId)
     nameInput.value = context.item?.name ?? ''
     amountInput.value = context.item ? centsToInput(context.item.amount) : ''
     dueInput.value = context.item?.dueDay ?? ''
+    if (currencySelect) currencySelect.value = normalizeCurrency(context.item?.currency)
+    if (cardCheck) {
+      cardCheck.checked = context.item
+        ? Boolean(context.item.isCard)
+        : looksLikeCardName(context.item?.name)
+    }
   } else {
     title.textContent = context.item ? 'Renombrar categoría' : 'Nueva categoría'
     setFieldVisibility([])
     nameInput.value = context.item?.name ?? ''
   }
 
+  syncAmountLabel()
   if (!formDialog.open) formDialog.showModal()
   nameInput.focus()
 }
@@ -398,6 +607,169 @@ function parseAmount(value) {
   return cents
 }
 
+function parseOptionalAmount(value) {
+  const trimmed = String(value).trim()
+  if (!trimmed) return null
+  return parseAmount(trimmed)
+}
+
+function detailsFields() {
+  return {
+    account: document.querySelector('#detail-account'),
+    monthlyUsd: document.querySelector('#detail-monthly-usd'),
+    monthlyNio: document.querySelector('#detail-monthly-nio'),
+    expectedUsd: document.querySelector('#detail-expected-usd'),
+    expectedNio: document.querySelector('#detail-expected-nio'),
+    notes: document.querySelector('#detail-notes'),
+    empty: document.querySelector('#details-empty'),
+    error: document.querySelector('#details-error'),
+    success: document.querySelector('#details-success'),
+    suggestMonthly: document.querySelector('#suggest-monthly'),
+    suggestExpected: document.querySelector('#suggest-expected'),
+  }
+}
+
+function formHasDetailInput(fields) {
+  return Boolean(
+    fields.account?.value.trim() ||
+      fields.monthlyUsd?.value.trim() ||
+      fields.monthlyNio?.value.trim() ||
+      fields.expectedUsd?.value.trim() ||
+      fields.expectedNio?.value.trim() ||
+      fields.notes?.value.trim(),
+  )
+}
+
+function showDetailsError(message) {
+  const { error, success } = detailsFields()
+  if (!error) return
+  error.hidden = !message
+  error.textContent = message || ''
+  if (message && success) success.hidden = true
+}
+
+function showDetailsSuccess(visible) {
+  const { success } = detailsFields()
+  if (!success) return
+  success.hidden = !visible
+}
+
+function pairSuggestion(usdInput, nioInput) {
+  const rate = currentMonth()?.exchangeRate
+  if (!isValidRate(rate) || !usdInput || !nioInput) return null
+  const usdText = usdInput.value.trim()
+  const nioText = nioInput.value.trim()
+  if (usdText && !nioText) {
+    const usd = dollarsToCents(usdText)
+    if (usd == null || usd < 0) return null
+    const cents = convertCents(usd, 'USD', 'NIO', rate)
+    if (cents == null) return null
+    return { target: nioInput, cents, label: `Sugerir ${formatMoney(cents, 'NIO')}` }
+  }
+  if (nioText && !usdText) {
+    const nio = dollarsToCents(nioText)
+    if (nio == null || nio < 0) return null
+    const cents = convertCents(nio, 'NIO', 'USD', rate)
+    if (cents == null) return null
+    return { target: usdInput, cents, label: `Sugerir ${formatMoney(cents, 'USD')}` }
+  }
+  return null
+}
+
+function updateSuggestButton(button, suggestion) {
+  if (!button) return
+  button.hidden = !suggestion
+  button.textContent = suggestion?.label ?? ''
+}
+
+function updateSuggestButtons() {
+  const fields = detailsFields()
+  updateSuggestButton(fields.suggestMonthly, pairSuggestion(fields.monthlyUsd, fields.monthlyNio))
+  updateSuggestButton(fields.suggestExpected, pairSuggestion(fields.expectedUsd, fields.expectedNio))
+  if (fields.empty) fields.empty.hidden = formHasDetailInput(fields)
+}
+
+function applySuggestion(pair) {
+  const fields = detailsFields()
+  const suggestion =
+    pair === 'monthly'
+      ? pairSuggestion(fields.monthlyUsd, fields.monthlyNio)
+      : pairSuggestion(fields.expectedUsd, fields.expectedNio)
+  if (!suggestion || suggestion.target.value.trim()) return
+  suggestion.target.value = centsToInput(suggestion.cents)
+  showDetailsSuccess(false)
+  updateSuggestButtons()
+}
+
+function fillDetailsForm(item) {
+  const fields = detailsFields()
+  const details = normalizeDetails(item.details)
+  if (fields.account) fields.account.value = details.accountNumber
+  if (fields.monthlyUsd) fields.monthlyUsd.value = centsToInput(details.monthlyUsd)
+  if (fields.monthlyNio) fields.monthlyNio.value = centsToInput(details.monthlyNio)
+  if (fields.expectedUsd) fields.expectedUsd.value = centsToInput(details.expectedUsd)
+  if (fields.expectedNio) fields.expectedNio.value = centsToInput(details.expectedNio)
+  if (fields.notes) fields.notes.value = details.notes
+  const title = document.querySelector('#details-title')
+  const mainAmount = document.querySelector('#details-main-amount')
+  if (title) title.textContent = item.name
+  if (mainAmount) mainAmount.textContent = formatMoney(item.amount, item.currency)
+  showDetailsError('')
+  showDetailsSuccess(false)
+  updateSuggestButtons()
+}
+
+function openDetails(id) {
+  const item = currentMonth().expenses.find((entry) => entry.id === id)
+  if (!item || !detailsDialog) return
+  detailsExpenseId = id
+  fillDetailsForm(item)
+  if (!detailsDialog.open) detailsDialog.showModal()
+  detailsFields().account?.focus()
+}
+
+function onDetailsInput() {
+  showDetailsSuccess(false)
+  showDetailsError('')
+  updateSuggestButtons()
+}
+
+function onSubmitDetails(event) {
+  event.preventDefault()
+  const month = currentMonth()
+  const item = month.expenses.find((entry) => entry.id === detailsExpenseId)
+  if (!item) return
+  const fields = detailsFields()
+  let details
+  try {
+    details = normalizeDetails({
+      accountNumber: fields.account?.value ?? '',
+      monthlyUsd: parseOptionalAmount(fields.monthlyUsd?.value ?? ''),
+      monthlyNio: parseOptionalAmount(fields.monthlyNio?.value ?? ''),
+      expectedUsd: parseOptionalAmount(fields.expectedUsd?.value ?? ''),
+      expectedNio: parseOptionalAmount(fields.expectedNio?.value ?? ''),
+      notes: fields.notes?.value ?? '',
+    })
+  } catch (error) {
+    showDetailsError(error.message)
+    return
+  }
+  item.details = details
+  if (!persist()) {
+    showDetailsError('No se pudieron guardar los detalles en este navegador.')
+    return
+  }
+  showDetailsError('')
+  showDetailsSuccess(true)
+  showToast('Detalles guardados')
+  updateSuggestButtons()
+  render()
+}
+
+function readCurrency(selectId) {
+  return normalizeCurrency(document.querySelector(selectId)?.value)
+}
+
 function onSubmitForm(event) {
   event.preventDefault()
   const month = currentMonth()
@@ -415,6 +787,7 @@ function onSubmitForm(event) {
         name,
         amount: parseAmount(document.querySelector('#field-amount').value),
         dueDay: parseDueDay(document.querySelector('#field-due').value),
+        currency: readCurrency('#field-currency'),
       }
       if (formContext.item) {
         month.incomes = month.incomes.map((item) => (item.id === next.id ? next : item))
@@ -431,6 +804,7 @@ function onSubmitForm(event) {
         showFormError('Elige una categoría.')
         return
       }
+      const isCard = Boolean(document.querySelector('#field-is-card')?.checked)
       const next = {
         ...(formContext.item ?? {}),
         id: formContext.item?.id ?? newId('exp'),
@@ -438,6 +812,10 @@ function onSubmitForm(event) {
         amount: parseAmount(document.querySelector('#field-amount').value),
         categoryId,
         dueDay: parseDueDay(document.querySelector('#field-due').value),
+        currency: readCurrency('#field-currency'),
+        isCard,
+        charges: formContext.item?.charges ?? [],
+        details: formContext.item?.details ?? emptyDetails(),
       }
       if (formContext.item) {
         month.expenses = month.expenses.map((item) => (item.id === next.id ? next : item))
@@ -523,11 +901,178 @@ function deleteCategory(id) {
   })
 }
 
+function currentCardExpense() {
+  return currentMonth().expenses.find((item) => item.id === cardExpenseId)
+}
+
+function resetChargeForm(expense) {
+  chargeEditId = null
+  document.querySelector('#charge-form-title').textContent = 'Añadir cargo'
+  document.querySelector('#charge-save').textContent = 'Añadir cargo'
+  document.querySelector('#charge-cancel-edit')?.classList.add('hidden')
+  document.querySelector('#charge-name').value = ''
+  document.querySelector('#charge-amount').value = ''
+  const currencySelect = document.querySelector('#charge-currency')
+  if (currencySelect) currencySelect.value = normalizeCurrency(expense?.currency)
+  const errorEl = document.querySelector('#charge-error')
+  if (errorEl) {
+    errorEl.hidden = true
+    errorEl.textContent = ''
+  }
+  syncChargeAmountLabel()
+}
+
+function renderCardDialog() {
+  const expense = currentCardExpense()
+  if (!expense || !cardDialog) return
+  const summary = cardSummary(expense, currentMonth().exchangeRate)
+  document.querySelector('#card-title').textContent = expense.name
+  document.querySelector('#card-pago').textContent = formatMoney(summary.pago, summary.currency)
+  document.querySelector('#card-cargado').textContent = summary.ok
+    ? formatMoney(summary.cargado, summary.currency)
+    : '—'
+  document.querySelector('#card-rest').textContent = summary.ok
+    ? formatMoney(summary.disponible, summary.currency)
+    : '—'
+  const restNote = document.querySelector('#card-rest-note')
+  const restStat = document.querySelector('#card-rest-stat')
+  restStat?.classList.toggle('is-negative', summary.ok && summary.disponible < 0)
+  if (!summary.ok) {
+    restNote.textContent =
+      'Falta una tasa válida para pasar cargos de otra moneda al pago de la tarjeta.'
+  } else if (summary.disponible < 0) {
+    restNote.textContent = 'Los cargos superan el pago del mes.'
+  } else {
+    restNote.textContent = 'Queda cupo en el pago del mes, en la moneda de la tarjeta.'
+  }
+
+  const list = document.querySelector('#charge-list')
+  if (!expense.charges.length) {
+    list.innerHTML = `<div class="empty">Todavía no hay cargos en esta tarjeta.</div>`
+  } else {
+    list.innerHTML = `
+      <ul class="ledger">
+        ${expense.charges
+          .map(
+            (charge) => `
+          <li class="ledger-row">
+            <span class="ledger-name">${escapeHtml(charge.name)}</span>
+            <span class="ledger-date">${charge.currency === 'NIO' ? 'Córdobas' : 'Dólares'}</span>
+            <span class="ledger-amount">${formatMoney(charge.amount, charge.currency)}</span>
+            <div class="row-actions">
+              <button type="button" class="btn btn-row" data-action="edit-charge" data-id="${charge.id}">Editar</button>
+              <button type="button" class="btn btn-row" data-action="delete-charge" data-id="${charge.id}">Eliminar</button>
+            </div>
+          </li>
+        `,
+          )
+          .join('')}
+      </ul>
+    `
+  }
+}
+
+function openCard(id) {
+  const expense = currentMonth().expenses.find((item) => item.id === id)
+  if (!expense?.isCard) return
+  cardExpenseId = id
+  resetChargeForm(expense)
+  renderCardDialog()
+  if (!cardDialog.open) cardDialog.showModal()
+}
+
+function showChargeError(message) {
+  const errorEl = document.querySelector('#charge-error')
+  if (!errorEl) return
+  errorEl.hidden = !message
+  errorEl.textContent = message || ''
+}
+
+function onSubmitCharge(event) {
+  event.preventDefault()
+  const expense = currentCardExpense()
+  if (!expense) return
+  const name = document.querySelector('#charge-name').value.trim()
+  if (!name) {
+    showChargeError('Escribe qué se cargó.')
+    return
+  }
+  let amount
+  try {
+    amount = parseAmount(document.querySelector('#charge-amount').value)
+  } catch (error) {
+    showChargeError(error.message)
+    return
+  }
+  const charge = {
+    id: chargeEditId ?? newId('chg'),
+    name,
+    amount,
+    currency: readCurrency('#charge-currency'),
+  }
+  if (chargeEditId) {
+    expense.charges = expense.charges.map((item) => (item.id === charge.id ? charge : item))
+  } else {
+    expense.charges.push(charge)
+  }
+  persist()
+  resetChargeForm(expense)
+  renderCardDialog()
+  render()
+}
+
+function startChargeEdit(id) {
+  const expense = currentCardExpense()
+  const charge = expense?.charges.find((item) => item.id === id)
+  if (!charge) return
+  chargeEditId = id
+  document.querySelector('#charge-form-title').textContent = 'Editar cargo'
+  document.querySelector('#charge-save').textContent = 'Guardar cargo'
+  document.querySelector('#charge-cancel-edit')?.classList.remove('hidden')
+  document.querySelector('#charge-name').value = charge.name
+  document.querySelector('#charge-amount').value = centsToInput(charge.amount)
+  const currencySelect = document.querySelector('#charge-currency')
+  if (currencySelect) currencySelect.value = normalizeCurrency(charge.currency)
+  showChargeError('')
+  syncChargeAmountLabel()
+  document.querySelector('#charge-name').focus()
+}
+
+function deleteCharge(id) {
+  const expense = currentCardExpense()
+  if (!expense) return
+  expense.charges = expense.charges.filter((item) => item.id !== id)
+  if (chargeEditId === id) resetChargeForm(expense)
+  persist()
+  renderCardDialog()
+  render()
+}
+
+function onCardClick(event) {
+  const button = event.target.closest('[data-action]')
+  if (!button) return
+  const { action, id } = button.dataset
+  if (action === 'edit-charge') startChargeEdit(id)
+  if (action === 'delete-charge') deleteCharge(id)
+}
+
+function applyExchangeRate(raw) {
+  const month = currentMonth()
+  const parsed = parseRate(raw)
+  month.exchangeRate = parsed ?? (String(raw).trim() === '' ? null : raw)
+  persist()
+  renderSummary()
+  renderCategories()
+  if (currentView === 'analytics') renderAnalytics()
+  if (cardDialog?.open) renderCardDialog()
+  if (detailsDialog?.open) updateSuggestButtons()
+}
+
 function restoreOctober() {
   openConfirm({
     title: '¿Restaurar octubre 2026?',
     message:
-      'Se volverá a cargar el presupuesto de octubre con ingreso de $4,800 y los gastos de la hoja. Los demás meses no se tocan.',
+      'Se volverá a cargar el presupuesto de octubre con ingreso de $4,800 y los gastos de la hoja. La tasa vuelve a 36.6 C$ por 1 USD, editable. Los demás meses no se tocan.',
     confirmLabel: 'Restaurar',
     onConfirm: () => {
       state.months[SEEDED_MONTH] = createOctoberSeed()
@@ -578,7 +1123,7 @@ function changeMonth(delta) {
 function onAppClick(event) {
   const button = event.target.closest('[data-action]')
   if (!button) return
-  const { action, id, category } = button.dataset
+  const { action, id, category, view } = button.dataset
   const month = currentMonth()
 
   if (action === 'add-income') {
@@ -600,6 +1145,10 @@ function onAppClick(event) {
     openForm({ type: 'expense', item: month.expenses.find((item) => item.id === id) })
   } else if (action === 'delete-expense') {
     deleteExpense(id)
+  } else if (action === 'open-card') {
+    openCard(id)
+  } else if (action === 'open-details' || action === 'details-expense') {
+    openDetails(id)
   } else if (action === 'add-category') {
     openForm({ type: 'category' })
   } else if (action === 'edit-category') {
@@ -608,6 +1157,8 @@ function onAppClick(event) {
     deleteCategory(id)
   } else if (action === 'open-month') {
     goToMonth(button.dataset.month)
+  } else if (action === 'show-view') {
+    setView(view)
   }
 }
 
@@ -651,11 +1202,35 @@ function bindEvents() {
   document.querySelector('#confirm-cancel').addEventListener('click', () => confirmDialog.close())
   document.querySelector('#confirm-close')?.addEventListener('click', () => confirmDialog.close())
   document.querySelector('#card-close')?.addEventListener('click', () => {
-    document.querySelector('#card-dialog')?.close()
+    cardDialog?.close()
   })
+  cardDialog?.addEventListener('click', onCardClick)
+  chargeForm?.addEventListener('submit', onSubmitCharge)
+  document.querySelector('#charge-cancel-edit')?.addEventListener('click', () => {
+    resetChargeForm(currentCardExpense())
+  })
+  document.querySelector('#field-currency')?.addEventListener('change', syncAmountLabel)
+  document.querySelector('#charge-currency')?.addEventListener('change', syncChargeAmountLabel)
+  const rateInput = document.querySelector('#field-rate')
+  rateInput?.addEventListener('input', (event) => applyExchangeRate(event.target.value))
+  rateInput?.addEventListener('change', (event) => applyExchangeRate(event.target.value))
+  rateInput?.addEventListener('blur', (event) => applyExchangeRate(event.target.value))
+  document.querySelector('#form-open-details')?.addEventListener('click', () => {
+    const id = formContext?.type === 'expense' ? formContext.item?.id : null
+    if (!id) return
+    formDialog.close()
+    openDetails(id)
+  })
+  detailsForm?.addEventListener('submit', onSubmitDetails)
+  detailsForm?.addEventListener('input', onDetailsInput)
+  document.querySelector('#details-cancel')?.addEventListener('click', () => detailsDialog?.close())
+  document.querySelector('#details-close')?.addEventListener('click', () => detailsDialog?.close())
+  document.querySelector('#suggest-monthly')?.addEventListener('click', () => applySuggestion('monthly'))
+  document.querySelector('#suggest-expected')?.addEventListener('click', () => applySuggestion('expected'))
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
-  closeOnBackdrop(document.querySelector('#card-dialog'))
+  closeOnBackdrop(cardDialog)
+  closeOnBackdrop(detailsDialog)
   document.querySelector('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault()
     const action = confirmContext
