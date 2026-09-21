@@ -91,9 +91,14 @@ function renderSavedMonths() {
 
 function renderCreateNext() {
   const button = document.querySelector('#create-next-month')
+  const wrap = document.querySelector('#create-next-wrap')
+  const tools = document.querySelector('#month-tools')
   const next = shiftMonth(state.currentMonth, 1)
+  const exists = monthExists(next)
   button.textContent = formatCreateNextLabel(state.currentMonth)
-  button.hidden = monthExists(next)
+  button.hidden = exists
+  if (wrap) wrap.hidden = exists
+  tools?.classList.toggle('has-cta', !exists)
   document.querySelector('#prev-month').disabled = !monthExists(shiftMonth(state.currentMonth, -1))
   document.querySelector('#next-month').disabled = !monthExists(next)
 }
@@ -102,10 +107,12 @@ function renderBanner() {
   if (!persistWarning) {
     bannerEl.hidden = true
     bannerEl.textContent = ''
+    bannerEl.removeAttribute('role')
     return
   }
   bannerEl.hidden = false
   bannerEl.textContent = persistWarning
+  bannerEl.setAttribute('role', 'alert')
 }
 
 function renderSummary() {
@@ -136,9 +143,23 @@ function renderSummary() {
 function rowActions(kind, id) {
   return `
     <div class="row-actions">
-      <button type="button" class="btn btn-tiny" data-action="edit-${kind}" data-id="${id}">Editar</button>
-      <button type="button" class="btn btn-tiny" data-action="delete-${kind}" data-id="${id}">Eliminar</button>
+      <button type="button" class="btn btn-row" data-action="edit-${kind}" data-id="${id}">Editar</button>
+      <button type="button" class="btn btn-row" data-action="delete-${kind}" data-id="${id}">Eliminar</button>
     </div>
+  `
+}
+
+function ledgerRow(item, kind) {
+  const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
+  return `
+    <li class="ledger-row">
+      <div class="ledger-copy">
+        <span class="ledger-name">${escapeHtml(item.name)}${badge}</span>
+        <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
+      </div>
+      <span class="ledger-amount">${formatMoney(item.amount)}</span>
+      ${rowActions(kind, item.id)}
+    </li>
   `
 }
 
@@ -146,7 +167,10 @@ function renderIncomes() {
   const month = currentMonth()
   if (month.incomes.length === 0) {
     incomeListEl.innerHTML = `
-      <p class="empty">Todavía no hay ingresos en ${formatMonthTitle(state.currentMonth)}. Añade el salario u otro ingreso para calcular el balance.</p>
+      <div class="empty empty-block">
+        <p>Todavía no hay ingresos en ${formatMonthTitle(state.currentMonth)}. Añade el salario u otro ingreso para calcular el balance.</p>
+        <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
+      </div>
     `
     return
   }
@@ -154,20 +178,7 @@ function renderIncomes() {
   const items = [...month.incomes].sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99) || a.name.localeCompare(b.name, 'es'))
   incomeListEl.innerHTML = `
     <ul class="ledger">
-      ${items
-        .map(
-          (item) => `
-            <li>
-              <div class="name">
-                ${escapeHtml(item.name)}
-                <span class="meta">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
-              </div>
-              <div class="amount">${formatMoney(item.amount)}</div>
-              ${rowActions('income', item.id)}
-            </li>
-          `,
-        )
-        .join('')}
+      ${items.map((item) => ledgerRow(item, 'income')).join('')}
     </ul>
   `
 }
@@ -182,7 +193,10 @@ function renderCategories() {
   const month = currentMonth()
   if (month.categories.length === 0) {
     categoryGridEl.innerHTML = `
-      <div class="empty">No hay categorías. Crea una para empezar a anotar gastos.</div>
+      <div class="empty empty-block">
+        <p>No hay categorías. Crea una para empezar a anotar gastos.</p>
+        <button type="button" class="btn btn-secondary" data-action="add-category">Nueva categoría</button>
+      </div>
     `
     return
   }
@@ -194,23 +208,13 @@ function renderCategories() {
     const wide = month.categories.length % 2 === 1 && index === month.categories.length - 1
     const body =
       expenses.length === 0
-        ? `<p class="empty">No hay gastos en ${escapeHtml(category.name)}. Añade el primero cuando lo tengas.</p>`
+        ? `<div class="empty empty-block">
+            <p>No hay gastos en ${escapeHtml(category.name)}.</p>
+            <button type="button" class="btn btn-ghost" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
+          </div>`
         : `
           <ul class="ledger">
-            ${expenses
-              .map(
-                (item) => `
-                  <li>
-                    <div class="name">
-                      ${escapeHtml(item.name)}
-                      <span class="meta">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
-                    </div>
-                    <div class="amount">${formatMoney(item.amount)}</div>
-                    ${rowActions('expense', item.id)}
-                  </li>
-                `,
-              )
-              .join('')}
+            ${expenses.map((item) => ledgerRow(item, 'expense')).join('')}
           </ul>
         `
 
@@ -219,12 +223,12 @@ function renderCategories() {
         <div class="card-head">
           <div>
             <h3>${escapeHtml(category.name)}</h3>
-            <strong>${formatMoney(categoryTotal(month, category.id))}</strong>
+            <strong class="category-total">${formatMoney(categoryTotal(month, category.id))}</strong>
           </div>
           <div class="row-actions">
-            <button type="button" class="btn btn-tiny" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
-            <button type="button" class="btn btn-tiny" data-action="edit-category" data-id="${category.id}">Renombrar</button>
-            <button type="button" class="btn btn-tiny" data-action="delete-category" data-id="${category.id}">Eliminar</button>
+            <button type="button" class="btn btn-row" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
+            <button type="button" class="btn btn-row" data-action="edit-category" data-id="${category.id}">Renombrar</button>
+            <button type="button" class="btn btn-row" data-action="delete-category" data-id="${category.id}">Eliminar</button>
           </div>
         </div>
         ${body}
@@ -235,11 +239,18 @@ function renderCategories() {
   categoryGridEl.innerHTML = cards.join('')
 }
 
+function renderViewTabs() {
+  const tabs = document.querySelector('#view-tabs')
+  if (!tabs) return
+  tabs.hidden = tabs.children.length === 0
+}
+
 function render() {
   renderBanner()
   renderSummary()
   renderIncomes()
   renderCategories()
+  renderViewTabs()
 }
 
 function setFieldVisibility(names) {
@@ -261,13 +272,21 @@ function fillCategorySelect(selectedId) {
 
 function showFormError(message) {
   const errorEl = document.querySelector('#form-error')
+  const nameInput = document.querySelector('#field-name')
+  const amountInput = document.querySelector('#field-amount')
   if (!message) {
     errorEl.hidden = true
     errorEl.textContent = ''
+    nameInput?.removeAttribute('aria-invalid')
+    amountInput?.removeAttribute('aria-invalid')
     return
   }
   errorEl.hidden = false
   errorEl.textContent = message
+  const invalidAmount = /monto/i.test(message)
+  nameInput?.setAttribute('aria-invalid', invalidAmount ? 'false' : 'true')
+  amountInput?.setAttribute('aria-invalid', invalidAmount ? 'true' : 'false')
+  ;(invalidAmount ? amountInput : nameInput)?.focus()
 }
 
 function openForm(context) {
@@ -334,6 +353,7 @@ function onSubmitForm(event) {
   try {
     if (formContext.type === 'income') {
       const next = {
+        ...(formContext.item ?? {}),
         id: formContext.item?.id ?? newId('inc'),
         name,
         amount: parseAmount(document.querySelector('#field-amount').value),
@@ -355,6 +375,7 @@ function onSubmitForm(event) {
         return
       }
       const next = {
+        ...(formContext.item ?? {}),
         id: formContext.item?.id ?? newId('exp'),
         name,
         amount: parseAmount(document.querySelector('#field-amount').value),
@@ -391,6 +412,7 @@ function openConfirm({ title, message, confirmLabel = 'Eliminar', onConfirm }) {
   document.querySelector('#confirm-message').textContent = message
   document.querySelector('#confirm-ok').textContent = confirmLabel
   if (!confirmDialog.open) confirmDialog.showModal()
+  document.querySelector('#confirm-cancel')?.focus()
 }
 
 function deleteIncome(id) {
@@ -546,6 +568,12 @@ function showApp() {
   render()
 }
 
+function closeOnBackdrop(dialog) {
+  dialog?.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close()
+  })
+}
+
 function bindEvents() {
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
@@ -560,7 +588,15 @@ function bindEvents() {
   appEl.addEventListener('click', onAppClick)
   itemForm.addEventListener('submit', onSubmitForm)
   document.querySelector('#form-cancel').addEventListener('click', () => formDialog.close())
+  document.querySelector('#form-close')?.addEventListener('click', () => formDialog.close())
   document.querySelector('#confirm-cancel').addEventListener('click', () => confirmDialog.close())
+  document.querySelector('#confirm-close')?.addEventListener('click', () => confirmDialog.close())
+  document.querySelector('#card-close')?.addEventListener('click', () => {
+    document.querySelector('#card-dialog')?.close()
+  })
+  closeOnBackdrop(formDialog)
+  closeOnBackdrop(confirmDialog)
+  closeOnBackdrop(document.querySelector('#card-dialog'))
   document.querySelector('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault()
     const action = confirmContext

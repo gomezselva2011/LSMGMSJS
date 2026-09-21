@@ -8,101 +8,125 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620;9..144,680&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
-    <div id="boot" class="boot" role="status">
+    <div id="boot" class="boot" role="status" aria-live="polite">
+      <div class="boot-mark" aria-hidden="true"></div>
       <p class="boot-kicker">Gastos del hogar</p>
       <h1>Cargando el presupuesto…</h1>
-      <p>Estamos abriendo el mes de Melissa y Lenin.</p>
+      <p>Abriendo el mes de Melissa y Lenin.</p>
     </div>
 
-    <div id="fatal" class="boot boot-error" hidden>
+    <div id="fatal" class="boot boot-error" hidden role="alert">
+      <div class="boot-mark boot-mark-error" aria-hidden="true"></div>
       <p class="boot-kicker">No se pudo abrir</p>
       <h1 id="fatal-title">Hubo un problema con los datos guardados</h1>
       <p id="fatal-message"></p>
-      <button type="button" class="btn btn-primary" id="fatal-restore">Restaurar octubre 2026</button>
+      <p class="boot-hint">Puedes restaurar octubre 2026 y seguir desde ahí. Los cambios dañados de este dispositivo se reemplazan.</p>
+      <button type="button" class="btn btn-primary btn-cta" id="fatal-restore">Restaurar octubre 2026</button>
     </div>
 
     <div id="app" hidden>
       <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-      <header class="top">
-        <div class="top-copy">
-          <p class="eyebrow">Gastos del hogar</p>
-          <h1>Presupuesto de <span id="month-title">octubre 2026</span></h1>
-          <p class="lede">
-            Melissa y Lenin · Casa San Andrés y Casa Praderas de Sandino
-          </p>
-        </div>
-        <div class="month-tools">
-          <div class="month-nav" role="group" aria-label="Cambiar de mes">
-            <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
-            <p id="month-chip">Octubre 2026</p>
-            <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+      <header class="masthead">
+        <div class="masthead-inner">
+          <div class="brand">
+            <p class="eyebrow">Gastos del hogar</p>
+            <p class="household">Melissa y Lenin</p>
+            <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
           </div>
-          <button type="button" class="btn btn-primary" id="create-next-month">Crear noviembre</button>
+
+          <div class="month-tools" id="month-tools">
+            <div class="month-nav" role="group" aria-label="Cambiar de mes">
+              <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
+              <p id="month-chip">Octubre 2026</p>
+              <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="cta-wrap" id="create-next-wrap">
+              <p class="cta-kicker">Siguiente paso</p>
+              <button type="button" class="btn btn-primary btn-cta" id="create-next-month">
+                Crear noviembre
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
-      <nav id="saved-months" class="month-chips" aria-label="Meses guardados"></nav>
+      <div class="app-shell">
+        <nav class="view-tabs" hidden aria-label="Vistas del hogar" id="view-tabs"></nav>
+        <nav id="saved-months" class="month-chips" aria-label="Meses guardados"></nav>
 
-      <div id="banner" class="banner" hidden></div>
+        <div id="banner" class="banner" hidden role="status"></div>
 
-      <main id="contenido">
-        <section class="summary" aria-label="Totales del mes">
-          <article class="stat">
-            <p>Ingresos</p>
-            <strong id="total-income">$0.00</strong>
-          </article>
-          <article class="stat">
-            <p>Gastos</p>
-            <strong id="total-expenses">$0.00</strong>
-          </article>
-          <article class="stat stat-net">
-            <p>Balance</p>
-            <strong id="total-net">$0.00</strong>
-            <span id="net-note"></span>
-          </article>
-        </section>
+        <main id="contenido" class="view view-budget">
+          <h1 class="page-title">Presupuesto de <span id="month-title">octubre 2026</span></h1>
 
-        <section class="panel" aria-labelledby="ingresos-title">
-          <div class="panel-head">
-            <div>
-              <h2 id="ingresos-title">Ingresos</h2>
-              <p>Lo que entra este mes. El balance usa estos montos, no una cifra fija.</p>
+          <section class="statement" aria-label="Totales del mes">
+            <article class="stat stat-income">
+              <p class="stat-label">Ingresos</p>
+              <strong class="stat-value" id="total-income">$0.00</strong>
+              <span class="stat-hint">Lo que entra</span>
+            </article>
+            <article class="stat stat-expense">
+              <p class="stat-label">Gastos</p>
+              <strong class="stat-value" id="total-expenses">$0.00</strong>
+              <span class="stat-hint">Lo que sale</span>
+            </article>
+            <article class="stat stat-net">
+              <p class="stat-label">Balance</p>
+              <strong class="stat-value" id="total-net">$0.00</strong>
+              <span class="stat-hint" id="net-note"></span>
+            </article>
+          </section>
+
+          <section class="panel" aria-labelledby="ingresos-title">
+            <div class="panel-head">
+              <div>
+                <h2 id="ingresos-title">Ingresos</h2>
+                <p>El balance usa estos montos, no una cifra fija.</p>
+              </div>
+              <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
             </div>
-            <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
-          </div>
-          <div id="income-list"></div>
-        </section>
+            <div id="income-list"></div>
+          </section>
 
-        <section aria-labelledby="gastos-title">
-          <div class="section-head">
-            <div>
-              <h2 id="gastos-title">Gastos por casa</h2>
-              <p>Cada partida se puede editar o quitar. Las categorías también.</p>
+          <section class="expenses-block" aria-labelledby="gastos-title">
+            <div class="section-head">
+              <div>
+                <h2 id="gastos-title">Gastos por casa</h2>
+                <p>
+                  Cada partida se edita o se quita. En una tarjeta, el mes cuenta solo el pago; los
+                  cargos van por dentro.
+                </p>
+              </div>
+              <div class="section-actions">
+                <button type="button" class="btn btn-secondary" data-action="add-expense">Añadir gasto</button>
+                <button type="button" class="btn btn-ghost" data-action="add-category">Nueva categoría</button>
+              </div>
             </div>
-            <div class="section-actions">
-              <button type="button" class="btn btn-secondary" data-action="add-expense">Añadir gasto</button>
-              <button type="button" class="btn btn-ghost" data-action="add-category">Nueva categoría</button>
-            </div>
-          </div>
-          <div id="category-grid" class="category-grid"></div>
-        </section>
-      </main>
+            <div id="category-grid" class="category-grid"></div>
+          </section>
+        </main>
 
-      <footer class="foot">
-        <p>Los cambios se guardan en este dispositivo. No hay cuenta ni servidor.</p>
-        <button type="button" class="btn btn-ghost" id="restore-october">Restaurar octubre 2026</button>
-      </footer>
+        <section id="analytics" class="view view-analytics" hidden aria-labelledby="analytics-title"></section>
+
+        <footer class="foot">
+          <p>Los cambios se guardan en este dispositivo. No hay cuenta ni servidor.</p>
+          <button type="button" class="btn btn-ghost" id="restore-october">Restaurar octubre 2026</button>
+        </footer>
+      </div>
     </div>
 
-    <dialog id="form-dialog" aria-labelledby="form-title">
+    <dialog id="form-dialog" aria-labelledby="form-title" aria-describedby="form-error">
       <form id="item-form" novalidate>
-        <h2 id="form-title">Añadir</h2>
+        <div class="dialog-head">
+          <h2 id="form-title">Añadir</h2>
+          <button type="button" class="icon-btn dialog-close" id="form-close" aria-label="Cerrar">×</button>
+        </div>
         <p id="form-error" class="form-error" hidden></p>
 
         <label class="field">
@@ -125,6 +149,14 @@
           <input id="field-due" name="dueDay" type="number" min="1" max="31" placeholder="Opcional" />
         </label>
 
+        <label class="check-field" data-field="isCard">
+          <input id="field-is-card" name="isCard" type="checkbox" />
+          <span>
+            Es pago de tarjeta
+            <small>Los cargos de la tarjeta se anotan aparte y no se suman otra vez a los gastos del mes.</small>
+          </span>
+        </label>
+
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" id="form-cancel">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="form-save">Guardar</button>
@@ -132,9 +164,78 @@
       </form>
     </dialog>
 
-    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <dialog id="card-dialog" aria-labelledby="card-title" aria-describedby="card-lede">
+      <div class="card-sheet">
+        <div class="card-sheet-head">
+          <div>
+            <p class="eyebrow">Tarjeta de crédito</p>
+            <h2 id="card-title">Tarjeta</h2>
+            <p id="card-lede">
+              Los cargos se descuentan del pago del mes. No se vuelven a sumar a los gastos del hogar:
+              ese pago ya los cubre.
+            </p>
+          </div>
+          <button type="button" class="icon-btn dialog-close" id="card-close" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="card-stats" id="card-stats">
+          <article>
+            <p>Pago del mes</p>
+            <strong id="card-pago">$0.00</strong>
+          </article>
+          <article>
+            <p>Cargado</p>
+            <strong id="card-cargado">$0.00</strong>
+          </article>
+          <article id="card-rest-stat">
+            <p id="card-rest-label">Disponible</p>
+            <strong id="card-rest">$0.00</strong>
+            <span id="card-rest-note"></span>
+          </article>
+        </div>
+
+        <div id="charge-list"></div>
+
+        <form id="charge-form" novalidate>
+          <h3 id="charge-form-title">Añadir cargo</h3>
+          <p id="charge-error" class="form-error" hidden></p>
+          <div class="charge-form-row">
+            <label class="field">
+              <span>Qué se cargó</span>
+              <input
+                id="charge-name"
+                name="chargeName"
+                type="text"
+                autocomplete="off"
+                maxlength="80"
+                placeholder="Lentes, celular, comida…"
+              />
+            </label>
+            <label class="field">
+              <span>Monto</span>
+              <input
+                id="charge-amount"
+                name="chargeAmount"
+                type="text"
+                inputmode="decimal"
+                placeholder="0.00"
+              />
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost hidden" id="charge-cancel-edit">Cancelar edición</button>
+            <button type="submit" class="btn btn-primary" id="charge-save">Añadir cargo</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
       <form id="confirm-form" method="dialog">
-        <h2 id="confirm-title">¿Eliminar?</h2>
+        <div class="dialog-head">
+          <h2 id="confirm-title">¿Eliminar?</h2>
+          <button type="button" class="icon-btn dialog-close" id="confirm-close" aria-label="Cerrar">×</button>
+        </div>
         <p id="confirm-message"></p>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" id="confirm-cancel" value="cancel">Cancelar</button>
