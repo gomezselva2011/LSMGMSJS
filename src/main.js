@@ -163,6 +163,12 @@ function applySessionChrome() {
   document.querySelector('#charge-form')?.toggleAttribute('hidden', !canEdit())
   document.querySelector('#details-save')?.classList.toggle('hidden', !canEdit())
   document.querySelector('#profiles-panel')?.toggleAttribute('hidden', !canEdit())
+  const saveNote = document.querySelector('#save-note')
+  if (saveNote) {
+    saveNote.textContent = canEdit()
+      ? 'Los cambios se guardan en el servidor de esta app y también en este navegador. Una ventana nueva en la misma dirección verá lo último que guardaste.'
+      : 'Estás viendo el presupuesto. Un perfil de solo lectura no puede añadir, editar, arrastrar ni guardar.'
+  }
 }
 
 function persist() {
@@ -1389,6 +1395,7 @@ function restoreFromFile() {
 
 async function onRestoreFileChange(event) {
   if (!canEdit()) return
+  const input = event.target
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
@@ -2217,7 +2224,12 @@ async function start() {
     bindEvents()
     persistEnabled = storageAvailable()
     await readSession()
+    if (authRequired && !currentUser) {
+      window.location.replace('/login')
+      return
+    }
     setHouseholdWritesEnabled(canEdit())
+    applySessionChrome()
     const loaded = await loadHousehold()
     state = loaded.state
     if (!persistEnabled) {

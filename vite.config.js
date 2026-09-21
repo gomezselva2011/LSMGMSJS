@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
+import { authPlugin } from './server/auth.js'
 import { gastosApiPlugin } from './server/gastos-api.js'
 
 export default defineConfig({
-  plugins: [gastosApiPlugin()],
+  plugins: [authPlugin(), gastosApiPlugin()],
   server: {
     host: '0.0.0.0',
     port: 4731,

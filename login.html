@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Entrar — Gastos del hogar</title>
+    <style>
+      html,body{margin:0;min-height:100%;background:#f3eee4;color:#1b2a4e}
+      [hidden]{display:none!important}
+    </style>
+    <link rel="stylesheet" href="/boot.css" />
+    <link rel="preload" as="image" href="/lm-mark.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620;9..144,680&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="boot" id="login">
+      <article class="boot-folio login-folio">
+        <img
+          class="boot-hero"
+          src="/lm-mark.jpg"
+          width="840"
+          height="840"
+          alt="L y M, 29 de octubre"
+        />
+        <p class="boot-kicker">Gastos del hogar</p>
+        <h1>Entrar al presupuesto</h1>
+        <p>Melissa y Lenin</p>
+        <form id="login-form" class="login-form" novalidate>
+          <label class="login-field">
+            <span>Usuario</span>
+            <input
+              id="login-username"
+              name="username"
+              type="text"
+              autocomplete="username"
+              required
+              maxlength="32"
+              spellcheck="false"
+            />
+          </label>
+          <label class="login-field">
+            <span>Contraseña</span>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <p id="login-error" class="login-error" hidden></p>
+          <button type="submit" class="btn btn-primary btn-cta" id="login-submit">Entrar</button>
+        </form>
+      </article>
+    </div>
+    <script type="module" src="/src/login.js"></script>
+  </body>
+</html>

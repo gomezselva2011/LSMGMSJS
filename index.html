@@ -98,18 +98,25 @@
           </div>
 
           <header class="month-tools" id="month-tools">
+            <button type="button" class="account-chip" id="account-open" aria-haspopup="dialog" aria-controls="account-dialog">
+              <img id="account-photo" src="/lm-mark.jpg" width="48" height="48" alt="" />
+              <span class="account-copy">
+                <strong id="account-name">Cuenta</strong>
+                <small id="account-role"></small>
+              </span>
+            </button>
             <div class="month-nav" role="group" aria-label="Cambiar de mes">
               <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
               <p id="month-chip">Octubre 2026</p>
               <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
             </div>
-            <div class="month-persist" role="group" aria-label="Guardar o eliminar el mes">
+            <div class="month-persist admin-only" role="group" aria-label="Guardar o eliminar el mes">
               <button type="button" class="btn btn-secondary" id="save-budget">Guardar</button>
               <button type="button" class="btn btn-ghost btn-danger-ghost" id="delete-month">
                 Eliminar mes
               </button>
             </div>
-            <div class="cta-wrap" id="create-next-wrap">
+            <div class="cta-wrap admin-only" id="create-next-wrap">
               <p class="cta-kicker">Siguiente paso</p>
               <button type="button" class="btn btn-primary btn-cta" id="create-next-month">
                 Crear noviembre
@@ -177,7 +184,7 @@
                 <h2 id="ingresos-title">Ingresos</h2>
                 <p>El balance usa estos montos, no una cifra fija.</p>
               </div>
-              <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
+              <button type="button" class="btn btn-secondary admin-only" data-action="add-income">Añadir ingreso</button>
             </div>
             <div id="income-list"></div>
           </section>
@@ -197,7 +204,7 @@
                   viajan con la partida y no se suman otra vez al hogar.
                 </p>
               </div>
-              <div class="section-actions">
+              <div class="section-actions admin-only">
                 <button type="button" class="btn btn-secondary" data-action="add-expense">Añadir gasto</button>
                 <button type="button" class="btn btn-ghost" data-action="add-category">Nueva categoría</button>
               </div>
@@ -212,20 +219,73 @@
 
         <footer class="foot">
           <div class="foot-main">
-            <p>
+            <p id="save-note">
               Los cambios se guardan en el servidor de esta app y también en este navegador. Una ventana
               nueva en la misma dirección verá lo último que guardaste.
             </p>
             <div class="foot-actions">
               <button type="button" class="btn btn-ghost" id="download-backup">Descargar copia</button>
-              <button type="button" class="btn btn-ghost" id="restore-file">Restaurar desde archivo</button>
+              <button type="button" class="btn btn-ghost admin-only" id="restore-file">Restaurar desde archivo</button>
               <input id="restore-file-input" type="file" accept="application/json,.json" hidden />
-              <button type="button" class="btn btn-ghost" id="restore-october">Restaurar octubre 2026</button>
+              <button type="button" class="btn btn-ghost admin-only" id="restore-october">Restaurar octubre 2026</button>
             </div>
           </div>
         </footer>
       </div>
     </div>
+
+    <dialog id="account-dialog" aria-labelledby="account-title">
+      <div class="account-sheet">
+        <div class="dialog-head">
+          <h2 id="account-title">Tu perfil</h2>
+          <button type="button" class="icon-btn dialog-close" id="account-close" aria-label="Cerrar">×</button>
+        </div>
+        <div class="account-profile">
+          <img id="account-dialog-photo" src="/lm-mark.jpg" width="96" height="96" alt="" />
+          <div>
+            <p id="account-dialog-name">Cuenta</p>
+            <p id="account-dialog-meta"></p>
+            <label class="btn btn-secondary photo-upload">
+              Cambiar foto
+              <input id="account-photo-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+            </label>
+          </div>
+        </div>
+        <section id="profiles-panel" hidden>
+          <h3>Perfiles del hogar</h3>
+          <p class="detail-hint">Hasta 3 personas. Un admin edita el presupuesto; un usuario normal solo lo mira.</p>
+          <p id="profiles-cap" class="detail-hint"></p>
+          <div id="profiles-list"></div>
+          <form id="create-profile-form" novalidate>
+            <h3>Crear perfil</h3>
+            <p id="profile-error" class="form-error" hidden></p>
+            <label class="field">
+              <span>Nombre</span>
+              <input name="name" type="text" required maxlength="80" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Usuario</span>
+              <input name="username" type="text" required maxlength="32" autocomplete="off" spellcheck="false" />
+            </label>
+            <label class="field">
+              <span>Contraseña</span>
+              <input name="password" type="password" required minlength="6" autocomplete="new-password" />
+            </label>
+            <label class="field">
+              <span>Rol</span>
+              <select name="role">
+                <option value="usuario">Solo lectura</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <button type="submit" class="btn btn-primary">Crear perfil</button>
+          </form>
+        </section>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="logout-btn">Cerrar sesión</button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="form-dialog" aria-labelledby="form-title" aria-describedby="form-error">
       <form id="item-form" novalidate>
@@ -402,7 +462,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" id="details-cancel">Cerrar</button>
-            <button type="submit" class="btn btn-primary" id="details-save">Guardar</button>
+            <button type="submit" class="btn btn-primary admin-only" id="details-save">Guardar</button>
           </div>
         </form>
 
