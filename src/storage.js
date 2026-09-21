@@ -507,10 +507,16 @@ function canTalkToServer() {
   return typeof window !== 'undefined' && typeof window.fetch === 'function'
 }
 
+let householdWritesEnabled = true
+
+export function setHouseholdWritesEnabled(enabled) {
+  householdWritesEnabled = Boolean(enabled)
+}
+
 export async function fetchServerState() {
   if (!canTalkToServer()) return null
   try {
-    const res = await window.fetch(GASTOS_API_PATH, { cache: 'no-store' })
+    const res = await window.fetch(GASTOS_API_PATH, { cache: 'no-store', credentials: 'same-origin' })
     if (!res.ok) return null
     const parsed = await res.json()
     const coerced = coerceState(parsed)
@@ -525,7 +531,7 @@ let pendingServerPayload = null
 let serverSaveTimer = 0
 
 export function queueServerSave(state) {
-  if (!state || !canTalkToServer()) return
+  if (!householdWritesEnabled || !state || !canTalkToServer()) return
   normalizeState(state)
   pendingServerPayload = JSON.stringify(state)
   if (typeof window.setTimeout !== 'function') {
@@ -542,7 +548,7 @@ export async function flushServerSave() {
   if (typeof window !== 'undefined' && typeof window.clearTimeout === 'function') {
     window.clearTimeout(serverSaveTimer)
   }
-  if (!pendingServerPayload || !canTalkToServer()) return
+  if (!pendingServerPayload || !canTalkToServer() || !householdWritesEnabled) return
   const payload = pendingServerPayload
   pendingServerPayload = null
   const res = await window.fetch(GASTOS_API_PATH, {
@@ -550,6 +556,7 @@ export async function flushServerSave() {
     headers: { 'Content-Type': 'application/json' },
     body: payload,
     cache: 'no-store',
+    credentials: 'same-origin',
   })
   if (!res.ok) {
     pendingServerPayload = payload

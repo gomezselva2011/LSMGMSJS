@@ -15,6 +15,7 @@ import {
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
   saveState,
+  setHouseholdWritesEnabled,
   storageAvailable,
   flushServerSave,
   importStateFromText,
@@ -88,12 +89,80 @@ let dragCategoryId = null
 let categoryDropPlace = null
 let longPressTimer = 0
 let longPressStart = null
+let currentUser = null
+let authRequired = false
 const expandedSubgastoIds = new Set()
 const DRAG_MIME = 'application/x-gastos-expense'
 const CATEGORY_MIME = 'application/x-gastos-category'
 
 function currentMonth() {
   return state.months[state.currentMonth]
+}
+
+function canEdit() {
+  if (currentUser) return currentUser.role === 'admin'
+  return !authRequired
+}
+
+async function readSession() {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' })
+    if (res.status === 404) {
+      authRequired = false
+      currentUser = null
+      return
+    }
+    authRequired = true
+    if (!res.ok) {
+      currentUser = null
+      return
+    }
+    const body = await res.json()
+    currentUser = body.user || null
+  } catch {
+    authRequired = false
+    currentUser = null
+  }
+}
+
+function roleLabel(role) {
+  return role === 'admin' ? 'Admin' : 'Solo lectura'
+}
+
+function photoSrc(user, bust = false) {
+  const url = user?.photoUrl || '/lm-mark.jpg'
+  return bust ? `${url}?t=${Date.now()}` : url
+}
+
+function applySessionChrome() {
+  document.body.classList.toggle('is-readonly', !canEdit())
+  document.body.classList.toggle('is-admin', canEdit())
+  const name = currentUser?.name || ''
+  const role = roleLabel(currentUser?.role)
+  const src = photoSrc(currentUser)
+  document.querySelectorAll('#account-photo, #account-dialog-photo').forEach((img) => {
+    if (img) img.src = src
+  })
+  const chipName = document.querySelector('#account-name')
+  const chipRole = document.querySelector('#account-role')
+  if (chipName) chipName.textContent = name
+  if (chipRole) chipRole.textContent = role
+  const dialogName = document.querySelector('#account-dialog-name')
+  const dialogMeta = document.querySelector('#account-dialog-meta')
+  if (dialogName) dialogName.textContent = name
+  if (dialogMeta) dialogMeta.textContent = `@${currentUser?.username || ''} · ${role}`
+  const rate = document.querySelector('#field-rate')
+  if (rate) {
+    rate.readOnly = !canEdit()
+    rate.disabled = !canEdit()
+  }
+  detailsForm?.querySelectorAll('input, textarea, select').forEach((el) => {
+    if (el.type === 'checkbox' || el.tagName === 'SELECT') el.disabled = !canEdit()
+    else el.readOnly = !canEdit()
+  })
+  document.querySelector('#charge-form')?.toggleAttribute('hidden', !canEdit())
+  document.querySelector('#details-save')?.classList.toggle('hidden', !canEdit())
+  document.querySelector('#profiles-panel')?.toggleAttribute('hidden', !canEdit())
 }
 
 function persist() {
@@ -106,12 +175,14 @@ function persist() {
     persistEnabled = false
     console.error(error)
   }
-  queueServerSave(state)
+  if (canEdit()) queueServerSave(state)
   persistWarning = localOk
     ? ''
-    : 'No se pudo guardar en este navegador. Se está escribiendo en el servidor de la app.'
+    : canEdit()
+      ? 'No se pudo guardar en este navegador. Se está escribiendo en el servidor de la app.'
+      : 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
   renderBanner()
-  return true
+  return canEdit() && localOk
 }
 
 function showToast(message) {
@@ -126,6 +197,7 @@ function showToast(message) {
 }
 
 async function saveNow() {
+  if (!canEdit()) return
   persist()
   try {
     await flushServerSave()
@@ -148,6 +220,7 @@ function monthAfterDelete(deletedKey) {
 }
 
 function deleteCurrentMonth() {
+  if (!canEdit()) return
   const deleting = state.currentMonth
   const keys = savedMonthKeys()
   if (keys.length <= 1) {
@@ -321,6 +394,9 @@ function renderSummary() {
 }
 
 function rowActions(kind, id, extra = '') {
+  if (!canEdit()) {
+    return extra ? `<div class="row-actions">${extra}</div>` : ''
+  }
   const moveBtn =
     kind === 'expense'
       ? `<button type="button" class="btn btn-row btn-move" data-action="move-expense" data-id="${id}">Mover a…</button>`
@@ -386,7 +462,7 @@ function ledgerRow(item, kind) {
     ? `<button type="button" class="btn-add-sub" data-action="toggle-subgastos" data-id="${item.id}" aria-label="${toggleLabel} de ${escapeHtml(item.name)}" title="${toggleLabel}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '−' : '+'}</button>`
     : ''
   const grip =
-    kind === 'expense'
+    kind === 'expense' && canEdit()
       ? `<span class="drag-grip" aria-hidden="true" title="Arrastra a otra categoría"></span>`
       : ''
   const rowInner = `
@@ -398,7 +474,7 @@ function ledgerRow(item, kind) {
       ${rowActions(kind, item.id, detailsBtn)}
   `
   const dragAttrs =
-    kind === 'expense'
+    kind === 'expense' && canEdit()
       ? ` draggable="true" data-expense-id="${item.id}" data-from-category="${item.categoryId}"`
       : ''
 
@@ -425,10 +501,13 @@ function ledgerRow(item, kind) {
 function renderIncomes() {
   const month = currentMonth()
   if (month.incomes.length === 0) {
+    const addBtn = canEdit()
+      ? `<button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>`
+      : ''
     incomeListEl.innerHTML = `
       <div class="empty empty-block">
-        <p>Todavía no hay ingresos en ${formatMonthTitle(state.currentMonth)}. Añade el salario u otro ingreso para calcular el balance.</p>
-        <button type="button" class="btn btn-secondary" data-action="add-income">Añadir ingreso</button>
+        <p>Todavía no hay ingresos en ${formatMonthTitle(state.currentMonth)}.${canEdit() ? ' Añade el salario u otro ingreso para calcular el balance.' : ''}</p>
+        ${addBtn}
       </div>
     `
     return
@@ -445,10 +524,13 @@ function renderIncomes() {
 function renderCategories() {
   const month = currentMonth()
   if (month.categories.length === 0) {
+    const addBtn = canEdit()
+      ? `<button type="button" class="btn btn-secondary" data-action="add-category">Nueva categoría</button>`
+      : ''
     categoryGridEl.innerHTML = `
       <div class="empty empty-block">
-        <p>No hay categorías. Crea una para empezar a anotar gastos.</p>
-        <button type="button" class="btn btn-secondary" data-action="add-category">Nueva categoría</button>
+        <p>No hay categorías.${canEdit() ? ' Crea una para empezar a anotar gastos.' : ''}</p>
+        ${addBtn}
       </div>
     `
     return
@@ -466,7 +548,11 @@ function renderCategories() {
       expenses.length === 0
         ? `<div class="empty empty-block">
             <p>No hay gastos en ${escapeHtml(category.name)}.</p>
-            <button type="button" class="btn btn-ghost" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
+            ${
+              canEdit()
+                ? `<button type="button" class="btn btn-ghost" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>`
+                : ''
+            }
           </div>`
         : `
           <ul class="ledger">
@@ -474,22 +560,8 @@ function renderCategories() {
           </ul>
         `
 
-    return `
-      <article class="category-card ${isFull ? 'wide is-full' : 'is-half'}" data-category-id="${category.id}" data-layout="${layout}">
-        <div class="card-head">
-          <div
-            class="category-drag"
-            draggable="true"
-            data-category-id="${category.id}"
-            title="Arrastra para reordenar"
-            aria-label="Arrastrar ${escapeHtml(category.name)} para reordenar"
-          >
-            <span class="category-handle" aria-hidden="true"></span>
-            <div>
-              <h3>${escapeHtml(category.name)}</h3>
-              <strong class="category-total">${totalLabel}</strong>
-            </div>
-          </div>
+    const tools = canEdit()
+      ? `
           <div class="card-head-tools">
             <div class="layout-toggle" role="group" aria-label="Ancho de ${escapeHtml(category.name)}">
               <button
@@ -514,7 +586,25 @@ function renderCategories() {
               <button type="button" class="btn btn-row" data-action="edit-category" data-id="${category.id}">Renombrar</button>
               <button type="button" class="btn btn-row" data-action="delete-category" data-id="${category.id}">Eliminar</button>
             </div>
+          </div>`
+      : ''
+
+    return `
+      <article class="category-card ${isFull ? 'wide is-full' : 'is-half'}" data-category-id="${category.id}" data-layout="${layout}">
+        <div class="card-head">
+          <div
+            class="category-drag"
+            ${canEdit() ? 'draggable="true"' : ''}
+            data-category-id="${category.id}"
+            ${canEdit() ? `title="Arrastra para reordenar" aria-label="Arrastrar ${escapeHtml(category.name)} para reordenar"` : ''}
+          >
+            ${canEdit() ? '<span class="category-handle" aria-hidden="true"></span>' : ''}
+            <div>
+              <h3>${escapeHtml(category.name)}</h3>
+              <strong class="category-total">${totalLabel}</strong>
+            </div>
           </div>
+          ${tools}
         </div>
         ${body}
         <p class="drop-hint" hidden>Soltar aquí</p>
@@ -573,6 +663,7 @@ function selectRubro(rubroId) {
 }
 
 function render() {
+  applySessionChrome()
   renderBanner()
   renderSummary()
   renderIncomes()
@@ -682,6 +773,7 @@ function showFormError(message) {
 }
 
 function openForm(context) {
+  if (!canEdit()) return
   formContext = context
   const title = document.querySelector('#form-title')
   const nameInput = document.querySelector('#field-name')
@@ -878,6 +970,7 @@ function onDetailsInput() {
 
 function onSubmitDetails(event) {
   event.preventDefault()
+  if (!canEdit()) return
   const month = currentMonth()
   const item = month.expenses.find((entry) => entry.id === detailsExpenseId)
   if (!item) return
@@ -914,6 +1007,7 @@ function readCurrency(selectId) {
 
 function onSubmitForm(event) {
   event.preventDefault()
+  if (!canEdit()) return
   const month = currentMonth()
   const name = document.querySelector('#field-name').value.trim()
   if (!name) {
@@ -1134,10 +1228,14 @@ function renderCardDialog() {
                   })(),
             )}</span>
             <span class="ledger-amount">${formatMoney(charge.amount, charge.currency)}</span>
-            <div class="row-actions">
+            ${
+              canEdit()
+                ? `<div class="row-actions">
               <button type="button" class="btn btn-row" data-action="edit-charge" data-id="${charge.id}">Editar</button>
               <button type="button" class="btn btn-row" data-action="delete-charge" data-id="${charge.id}">Eliminar</button>
-            </div>
+            </div>`
+                : ''
+            }
           </li>
         `,
           )
@@ -1172,6 +1270,7 @@ function toggleSubgastos(id) {
 
 function onSubmitCharge(event) {
   event.preventDefault()
+  if (!canEdit()) return
   const expense = currentCardExpense()
   if (!expense) return
   if (!Array.isArray(expense.charges)) expense.charges = []
@@ -1240,6 +1339,7 @@ function onCardClick(event) {
 }
 
 function applyExchangeRate(raw) {
+  if (!canEdit()) return
   const month = currentMonth()
   const parsed = parseRate(raw)
   month.exchangeRate = parsed ?? (String(raw).trim() === '' ? null : raw)
@@ -1254,6 +1354,7 @@ function applyExchangeRate(raw) {
 }
 
 function restoreOctober() {
+  if (!canEdit()) return
   openConfirm({
     title: '¿Restaurar octubre 2026?',
     message:
@@ -1282,11 +1383,12 @@ function downloadBackup() {
 }
 
 function restoreFromFile() {
+  if (!canEdit()) return
   document.querySelector('#restore-file-input')?.click()
 }
 
 async function onRestoreFileChange(event) {
-  const input = event.target
+  if (!canEdit()) return
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
@@ -1313,6 +1415,7 @@ async function onRestoreFileChange(event) {
 }
 
 function createNextMonth() {
+  if (!canEdit()) return
   const fromKey = state.currentMonth
   const next = shiftMonth(fromKey, 1)
   const copy = () => {
@@ -1668,6 +1771,10 @@ function onCategoryReorderStart(event) {
 }
 
 function onGridDragStart(event) {
+  if (!canEdit()) {
+    event.preventDefault()
+    return
+  }
   if (event.target.closest('.category-drag') && !event.target.closest('.ledger-drag')) {
     onCategoryReorderStart(event)
     return
@@ -1880,6 +1987,113 @@ function closeOnBackdrop(dialog) {
   })
 }
 
+async function fetchMe() {
+  const res = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' })
+  if (res.status === 401) return null
+  if (!res.ok) throw new Error('No se pudo comprobar la sesión.')
+  const body = await res.json()
+  return body.user || null
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+  } catch {
+    // Still send Melissa back to login.
+  }
+  window.location.replace('/login')
+}
+
+async function refreshProfiles() {
+  const list = document.querySelector('#profiles-list')
+  if (!list || !canEdit()) return
+  const res = await fetch('/api/users', { credentials: 'same-origin', cache: 'no-store' })
+  if (!res.ok) return
+  const body = await res.json()
+  const users = body.users || []
+  list.innerHTML = users
+    .map(
+      (user) => `
+      <article class="profile-row">
+        <img src="${escapeHtml(user.photoUrl)}" alt="" width="40" height="40" />
+        <div>
+          <strong>${escapeHtml(user.name)}</strong>
+          <small>@${escapeHtml(user.username)} · ${escapeHtml(roleLabel(user.role))}</small>
+        </div>
+      </article>
+    `,
+    )
+    .join('')
+  const form = document.querySelector('#create-profile-form')
+  if (form) form.hidden = users.length >= (body.max || 3)
+  const cap = document.querySelector('#profiles-cap')
+  if (cap) cap.textContent = `${users.length} de ${body.max || 3} perfiles`
+}
+
+async function openAccountDialog() {
+  applySessionChrome()
+  await refreshProfiles()
+  document.querySelector('#account-dialog')?.showModal()
+}
+
+async function onCreateProfile(event) {
+  event.preventDefault()
+  if (!canEdit()) return
+  const form = event.currentTarget
+  const errorEl = document.querySelector('#profile-error')
+  const data = new FormData(form)
+  if (errorEl) {
+    errorEl.hidden = true
+    errorEl.textContent = ''
+  }
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: data.get('name'),
+      username: data.get('username'),
+      password: data.get('password'),
+      role: data.get('role'),
+    }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    if (errorEl) {
+      errorEl.hidden = false
+      errorEl.textContent = body.error || 'No se pudo crear el perfil.'
+    }
+    return
+  }
+  form.reset()
+  showToast('Perfil creado')
+  await refreshProfiles()
+}
+
+async function onChangePhoto(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const res = await fetch('/api/me/photo', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    showToast(body.error || 'No se pudo cambiar la foto')
+    return
+  }
+  currentUser = body.user
+  applySessionChrome()
+  document.querySelectorAll('#account-photo, #account-dialog-photo').forEach((img) => {
+    if (img) img.src = photoSrc(currentUser, true)
+  })
+  showToast('Foto actualizada')
+}
+
 function bindEvents() {
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
@@ -1890,7 +2104,23 @@ function bindEvents() {
   document.querySelector('#download-backup')?.addEventListener('click', downloadBackup)
   document.querySelector('#restore-file')?.addEventListener('click', restoreFromFile)
   document.querySelector('#restore-file-input')?.addEventListener('change', onRestoreFileChange)
+  document.querySelector('#account-open')?.addEventListener('click', () => {
+    openAccountDialog().catch((error) => console.error(error))
+  })
+  document.querySelector('#account-close')?.addEventListener('click', () => {
+    document.querySelector('#account-dialog')?.close()
+  })
+  document.querySelector('#logout-btn')?.addEventListener('click', () => {
+    logout().catch((error) => console.error(error))
+  })
+  document.querySelector('#create-profile-form')?.addEventListener('submit', (event) => {
+    onCreateProfile(event).catch((error) => console.error(error))
+  })
+  document.querySelector('#account-photo-input')?.addEventListener('change', (event) => {
+    onChangePhoto(event).catch((error) => console.error(error))
+  })
   document.querySelector('#fatal-restore').addEventListener('click', () => {
+    if (!canEdit()) return
     state = restoreOctoberPreservingOthers()
     persistEnabled = storageAvailable()
     persist()
@@ -1973,6 +2203,7 @@ function bindEvents() {
   closeOnBackdrop(confirmDialog)
   closeOnBackdrop(detailsDialog)
   closeOnBackdrop(moveDialog)
+  closeOnBackdrop(document.querySelector('#account-dialog'))
   document.querySelector('#confirm-form').addEventListener('submit', (event) => {
     event.preventDefault()
     const action = confirmContext
@@ -1985,12 +2216,16 @@ async function start() {
   try {
     bindEvents()
     persistEnabled = storageAvailable()
+    await readSession()
+    setHouseholdWritesEnabled(canEdit())
     const loaded = await loadHousehold()
     state = loaded.state
     if (!persistEnabled) {
       persistWarning = loaded.fromServer
         ? 'Este navegador no guarda una copia local. Los cambios se escriben en el servidor de la app.'
         : 'Este navegador no permite guardar datos locales. Se intentará usar el servidor de la app.'
+    } else if (authRequired && !canEdit()) {
+      persistWarning = 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
     }
     showApp()
   } catch (error) {
