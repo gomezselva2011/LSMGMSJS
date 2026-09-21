@@ -58,8 +58,7 @@ let toastTimer = 0
 let currentView = 'budget'
 let chargeEditId = null
 let detailsExpenseId = null
-let inlineChargeExpenseId = null
-let inlineChargeDraft = null
+const expandedSubgastoIds = new Set()
 
 function currentMonth() {
   return state.months[state.currentMonth]
@@ -149,7 +148,7 @@ function monthExists(monthKey) {
 function goToMonth(monthKey) {
   if (!monthExists(monthKey)) return
   persistWarning = persistEnabled ? '' : persistWarning
-  if (inlineChargeExpenseId) clearInlineCharge()
+  expandedSubgastoIds.clear()
   state.currentMonth = monthKey
   persist()
   render()
@@ -313,57 +312,6 @@ function nestedChargeRow(charge) {
   `
 }
 
-function defaultInlineDraft(expense) {
-  return {
-    name: '',
-    amount: '',
-    currency: normalizeCurrency(expense?.currency),
-    error: '',
-  }
-}
-
-function inlineChargeMarkup(item) {
-  if (inlineChargeExpenseId !== item.id || !inlineChargeDraft) return ''
-  const draft = inlineChargeDraft
-  const usd = normalizeCurrency(draft.currency) === 'USD'
-  const error = draft.error
-    ? `<p class="inline-charge-error form-error" role="alert">${escapeHtml(draft.error)}</p>`
-    : `<p class="inline-charge-error form-error" hidden></p>`
-  return `
-    <form class="inline-charge" data-id="${item.id}" novalidate>
-      ${error}
-      <input
-        id="inline-charge-name"
-        name="inlineChargeName"
-        type="text"
-        maxlength="80"
-        placeholder="Nombre"
-        autocomplete="off"
-        aria-label="Nombre del subgasto"
-        value="${escapeHtml(draft.name)}"
-      />
-      <input
-        id="inline-charge-amount"
-        name="inlineChargeAmount"
-        type="text"
-        inputmode="decimal"
-        placeholder="0.00"
-        autocomplete="off"
-        aria-label="Monto"
-        value="${escapeHtml(draft.amount)}"
-      />
-      <select id="inline-charge-currency" name="inlineChargeCurrency" aria-label="Moneda">
-        <option value="USD"${usd ? ' selected' : ''}>$</option>
-        <option value="NIO"${usd ? '' : ' selected'}>C$</option>
-      </select>
-      <div class="inline-charge-actions">
-        <button type="submit" class="btn btn-primary">Guardar</button>
-        <button type="button" class="btn btn-ghost" data-action="cancel-inline-charge">Cancelar</button>
-      </div>
-    </form>
-  `
-}
-
 function ledgerRow(item, kind) {
   const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
   const detailsMark =
@@ -380,38 +328,38 @@ function ledgerRow(item, kind) {
     kind === 'expense'
       ? `<button type="button" class="btn btn-row" data-action="open-details" data-id="${item.id}">Ver detalles</button>`
       : ''
-  const adding = kind === 'expense' && inlineChargeExpenseId === item.id
-  const addBtn =
-    kind === 'expense'
-      ? `<button type="button" class="btn-add-sub" data-action="add-subgasto" data-id="${item.id}" aria-label="Añadir subgasto a ${escapeHtml(item.name)}" title="Añadir subgasto" aria-expanded="${adding ? 'true' : 'false'}">+</button>`
-      : ''
+  const charges = kind === 'expense' && Array.isArray(item.charges) ? item.charges : []
+  const hasSubs = charges.length > 0
+  if (!hasSubs) expandedSubgastoIds.delete(item.id)
+  const expanded = hasSubs && expandedSubgastoIds.has(item.id)
+  const toggleLabel = expanded ? 'Ocultar subgastos' : 'Mostrar subgastos'
+  const toggleBtn = hasSubs
+    ? `<button type="button" class="btn-add-sub" data-action="toggle-subgastos" data-id="${item.id}" aria-label="${toggleLabel} de ${escapeHtml(item.name)}" title="${toggleLabel}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '−' : '+'}</button>`
+    : ''
   const rowInner = `
       ${name}
       <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
       <span class="ledger-amount">${formatMoney(item.amount, item.currency)}${remaining}</span>
-      ${addBtn}
+      ${toggleBtn}
       ${rowActions(kind, item.id, detailsBtn)}
   `
 
-  if (kind !== 'expense') {
+  if (kind !== 'expense' || !hasSubs) {
     return `<li class="ledger-row">${rowInner}</li>`
   }
 
-  const charges = Array.isArray(item.charges) ? item.charges : []
-  const nested =
-    charges.length === 0
-      ? ''
-      : `<ul class="ledger-sub" aria-label="Subgastos de ${escapeHtml(item.name)}">${charges
-          .map((charge) => nestedChargeRow(charge))
-          .join('')}</ul>`
+  const nested = expanded
+    ? `<ul class="ledger-sub" aria-label="Subgastos de ${escapeHtml(item.name)}">${charges
+        .map((charge) => nestedChargeRow(charge))
+        .join('')}</ul>`
+    : ''
 
   return `
-    <li class="ledger-group${charges.length ? ' has-subs' : ''}${adding ? ' is-adding' : ''}">
+    <li class="ledger-group has-subs${expanded ? ' is-expanded' : ''}">
       <div class="ledger-row ledger-row-main">
         ${rowInner}
       </div>
       ${nested}
-      ${inlineChargeMarkup(item)}
     </li>
   `
 }
@@ -821,23 +769,15 @@ function fillDetailsForm(item) {
   updateSuggestButtons()
 }
 
-function clearInlineCharge() {
-  inlineChargeExpenseId = null
-  inlineChargeDraft = null
-}
-
 function openDetails(id) {
   const item = currentMonth().expenses.find((entry) => entry.id === id)
   if (!item || !detailsDialog) return
-  const wasInline = inlineChargeExpenseId != null
-  if (wasInline) clearInlineCharge()
   detailsExpenseId = id
   fillDetailsForm(item)
   resetChargeForm(item)
   renderCardDialog()
   if (!detailsDialog.open) detailsDialog.showModal()
   detailsFields().account?.focus()
-  if (wasInline) renderCategories()
 }
 
 function onDetailsInput() {
@@ -985,7 +925,7 @@ function deleteExpense(id) {
     onConfirm: () => {
       currentMonth().expenses = currentMonth().expenses.filter((entry) => entry.id !== id)
       if (detailsExpenseId === id) detailsDialog?.close()
-      if (inlineChargeExpenseId === id) clearInlineCharge()
+      expandedSubgastoIds.delete(id)
       persist()
       render()
     },
@@ -1131,83 +1071,12 @@ function showChargeError(message) {
   errorEl.textContent = message || ''
 }
 
-function readInlineDraftFromForm(form) {
-  if (!form || !inlineChargeDraft) return
-  inlineChargeDraft.name = form.querySelector('#inline-charge-name')?.value ?? ''
-  inlineChargeDraft.amount = form.querySelector('#inline-charge-amount')?.value ?? ''
-  inlineChargeDraft.currency = form.querySelector('#inline-charge-currency')?.value ?? 'USD'
-}
-
-function focusInlineCharge(field = 'name') {
-  requestAnimationFrame(() => {
-    const id = field === 'amount' ? '#inline-charge-amount' : '#inline-charge-name'
-    document.querySelector(id)?.focus()
-  })
-}
-
-function openInlineCharge(id) {
+function toggleSubgastos(id) {
   const item = currentMonth().expenses.find((entry) => entry.id === id)
-  if (!item) return
-  if (detailsDialog?.open) detailsDialog.close()
-  if (inlineChargeExpenseId !== id) {
-    inlineChargeExpenseId = id
-    inlineChargeDraft = defaultInlineDraft(item)
-  }
+  if (!item?.charges?.length) return
+  if (expandedSubgastoIds.has(id)) expandedSubgastoIds.delete(id)
+  else expandedSubgastoIds.add(id)
   render()
-  focusInlineCharge('name')
-}
-
-function cancelInlineCharge() {
-  clearInlineCharge()
-  render()
-}
-
-function onSubmitInlineCharge(event) {
-  event.preventDefault()
-  const form = event.target.closest('form.inline-charge')
-  const id = form?.dataset.id
-  const expense = currentMonth().expenses.find((entry) => entry.id === id)
-  if (!expense || !form) return
-  readInlineDraftFromForm(form)
-  const name = String(inlineChargeDraft.name ?? '').trim()
-  if (!name) {
-    inlineChargeDraft.error = 'Escribe un nombre.'
-    render()
-    focusInlineCharge('name')
-    return
-  }
-  let amount
-  try {
-    amount = parseAmount(inlineChargeDraft.amount)
-  } catch (error) {
-    inlineChargeDraft.error = error.message
-    render()
-    focusInlineCharge('amount')
-    return
-  }
-  if (!Array.isArray(expense.charges)) expense.charges = []
-  expense.charges.push({
-    id: newId('chg'),
-    name,
-    amount,
-    currency: normalizeCurrency(inlineChargeDraft.currency),
-  })
-  persist()
-  clearInlineCharge()
-  render()
-  showToast('Subgasto añadido')
-}
-
-function onInlineChargeInput(event) {
-  const form = event.target.closest('form.inline-charge')
-  if (!form) return
-  readInlineDraftFromForm(form)
-  if (inlineChargeDraft) inlineChargeDraft.error = ''
-  const errorEl = form.querySelector('.inline-charge-error')
-  if (errorEl) {
-    errorEl.hidden = true
-    errorEl.textContent = ''
-  }
 }
 
 function onSubmitCharge(event) {
@@ -1372,10 +1241,8 @@ function onAppClick(event) {
     deleteExpense(id)
   } else if (action === 'open-card' || action === 'open-details' || action === 'details-expense') {
     openDetails(id)
-  } else if (action === 'add-subgasto') {
-    openInlineCharge(id)
-  } else if (action === 'cancel-inline-charge') {
-    cancelInlineCharge()
+  } else if (action === 'toggle-subgastos') {
+    toggleSubgastos(id)
   } else if (action === 'add-category') {
     openForm({ type: 'category' })
   } else if (action === 'edit-category') {
@@ -1423,10 +1290,6 @@ function bindEvents() {
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
-  appEl.addEventListener('submit', (event) => {
-    if (event.target.closest('form.inline-charge')) onSubmitInlineCharge(event)
-  })
-  appEl.addEventListener('input', onInlineChargeInput)
   itemForm.addEventListener('submit', onSubmitForm)
   document.querySelector('#form-cancel').addEventListener('click', () => formDialog.close())
   document.querySelector('#form-close')?.addEventListener('click', () => formDialog.close())

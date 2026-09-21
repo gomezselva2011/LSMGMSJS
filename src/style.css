@@ -1530,6 +1530,9 @@ dialog::backdrop {
 
 .btn-add-sub {
   grid-area: add;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: var(--touch);
   height: var(--touch);
   min-width: var(--touch);
@@ -1548,7 +1551,7 @@ dialog::backdrop {
 }
 
 .btn-add-sub:hover,
-.ledger-group.is-adding .btn-add-sub {
+.ledger-group.is-expanded .btn-add-sub {
   background: var(--pine);
   color: #f4fbf7;
   border-color: var(--pine);
@@ -1590,50 +1593,6 @@ dialog::backdrop {
   white-space: nowrap;
 }
 
-.inline-charge {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) 6.5rem 4.75rem auto;
-  gap: 0.45rem;
-  align-items: center;
-  margin: 0 0 0.7rem 0.35rem;
-  padding: 0.55rem 0.65rem 0.6rem 1rem;
-  border-left: 2px solid var(--pine);
-  background: var(--pine-soft);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.inline-charge-error {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
-.inline-charge input,
-.inline-charge select {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  min-height: var(--touch);
-  padding: 0.55rem 0.75rem;
-  background: #fff;
-  width: 100%;
-}
-
-.inline-charge input:focus,
-.inline-charge select:focus {
-  outline: 2px solid var(--terracotta);
-  outline-offset: 2px;
-}
-
-.inline-charge-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-}
-
-.inline-charge-actions .btn {
-  min-height: var(--touch);
-}
-
 @media (max-width: 860px) {
   .ledger-row-main {
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1645,19 +1604,5 @@ dialog::backdrop {
   .btn-add-sub {
     justify-self: end;
     align-self: center;
-  }
-}
-
-@media (max-width: 640px) {
-  .inline-charge {
-    grid-template-columns: 1fr;
-  }
-
-  .inline-charge-actions {
-    width: 100%;
-  }
-
-  .inline-charge-actions .btn {
-    flex: 1;
   }
 }
