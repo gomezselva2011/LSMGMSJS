@@ -5,6 +5,15 @@ import { DEFAULT_EXCHANGE_RATE } from './money.js'
 export const HOUSEHOLD = 'Melissa y Lenin'
 export const SEEDED_MONTH = '2026-10'
 export const STORAGE_KEY = 'gastos-hogar-v1'
+export const LEGACY_STORAGE_KEYS = [
+  'gastos-hogar',
+  'gastos-hogar-v0',
+  'gastos-hogar-v2',
+  'gastos-hogar-v3',
+  'gastos-del-hogar',
+  'gastos-melissa-lenin',
+]
+export const CURRENT_VERSION = 1
 
 export const CATEGORY_SAN_ANDRES = 'cat-san-andres'
 export const CATEGORY_PRADERAS = 'cat-praderas'

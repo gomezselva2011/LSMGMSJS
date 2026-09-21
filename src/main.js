@@ -13,6 +13,8 @@ import {
   looksLikeCardName,
   normalizeDetails,
   reorderCategories,
+  restoreOctoberMonth,
+  restoreOctoberPreservingOthers,
   saveState,
   storageAvailable,
 } from './storage.js'
@@ -1249,8 +1251,7 @@ function restoreOctober() {
       'Se volverá a cargar el presupuesto de octubre con ingreso de $4,800 y los gastos de la hoja. La tasa vuelve a 36.6 C$ por 1 USD, editable. Los demás meses no se tocan.',
     confirmLabel: 'Restaurar',
     onConfirm: () => {
-      state.months[SEEDED_MONTH] = createOctoberSeed()
-      state.currentMonth = SEEDED_MONTH
+      restoreOctoberMonth(state)
       persist()
       render()
     },
@@ -1812,7 +1813,7 @@ function bindEvents() {
   document.querySelector('#delete-month')?.addEventListener('click', deleteCurrentMonth)
   document.querySelector('#restore-october').addEventListener('click', restoreOctober)
   document.querySelector('#fatal-restore').addEventListener('click', () => {
-    state = createInitialState()
+    state = restoreOctoberPreservingOthers()
     persistEnabled = storageAvailable()
     persist()
     showApp()

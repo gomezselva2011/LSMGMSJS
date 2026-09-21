@@ -1,5 +1,7 @@
 import {
   STORAGE_KEY,
+  LEGACY_STORAGE_KEYS,
+  CURRENT_VERSION,
   SEEDED_MONTH,
   CATEGORY_OTROS,
   CATEGORY_PRADERAS,
@@ -22,19 +24,54 @@ export function looksLikeCardName(name) {
   return /^TC\b/i.test(text) || /tarjeta/i.test(text)
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim()
+    if (text) return text
+  }
+  return ''
+}
+
+function firstAmount(...values) {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const amount = Number(value)
+    if (Number.isFinite(amount) && amount >= 0) return Math.round(amount)
+  }
+  return null
+}
+
 export function normalizeCharge(raw) {
   if (!raw || typeof raw !== 'object') return null
-  const name = String(raw.name ?? '').trim()
-  if (!name) return null
-  const amount = Number(raw.amount)
-  if (!Number.isFinite(amount) || amount < 0) return null
+  const name = firstText(raw.name, raw.nombre, raw.title, raw.concepto, raw.label)
+  const amount = firstAmount(raw.amount, raw.monto, raw.cents, raw.value, raw.pago)
+  if (!name && amount == null) return null
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : newId('chg')
   return {
     id,
-    name,
-    amount: Math.round(amount),
-    currency: normalizeCurrency(raw.currency),
+    name: name || 'Subgasto',
+    amount: amount ?? 0,
+    currency: normalizeCurrency(raw.currency ?? raw.moneda),
   }
+}
+
+function asChargeList(value) {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') return Object.values(value)
+  return []
+}
+
+export function readExpenseCharges(raw) {
+  const lists = [
+    asChargeList(raw?.charges),
+    asChargeList(raw?.subgastos),
+    asChargeList(raw?.cargos),
+  ]
+  let best = lists[0]
+  for (const list of lists) {
+    if (list.length > best.length) best = list
+  }
+  return best
 }
 
 export function emptyDetails() {
@@ -89,7 +126,7 @@ export function normalizeExpense(raw) {
   if (!raw || typeof raw !== 'object') return raw
   const hasExplicit = typeof raw.isCard === 'boolean'
   raw.isCard = hasExplicit ? raw.isCard : looksLikeCardName(raw.name)
-  raw.charges = Array.isArray(raw.charges) ? raw.charges.map(normalizeCharge).filter(Boolean) : []
+  raw.charges = readExpenseCharges(raw).map(normalizeCharge).filter(Boolean)
   raw.currency = normalizeCurrency(raw.currency)
   raw.details = normalizeDetails(raw.details)
   normalizeRubro(raw)
@@ -167,13 +204,14 @@ export function reorderCategories(month, sourceId, targetId, place) {
 }
 
 export function normalizeState(state) {
-  if (!state || typeof state !== 'object') return createInitialState()
-  if (!state.months || typeof state.months !== 'object') {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return createInitialState()
+  if (!state.months || typeof state.months !== 'object' || Array.isArray(state.months)) {
     state.months = {}
   }
   for (const key of Object.keys(state.months)) {
     state.months[key] = normalizeMonth(state.months[key])
   }
+  state.version = CURRENT_VERSION
   return state
 }
 
@@ -204,9 +242,166 @@ export function cardSummary(expense, rate) {
   return { pago, cargado, disponible: pago - cargado, currency, ok: true }
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function parseJson(raw) {
+  if (raw == null || raw === '') return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function storageKeyList() {
+  const keys = new Set([STORAGE_KEY, ...LEGACY_STORAGE_KEYS])
+  try {
+    const ls = window.localStorage
+    const len = Number(ls.length) || 0
+    for (let i = 0; i < len; i += 1) {
+      const key = ls.key?.(i)
+      if (typeof key === 'string' && /gastos/i.test(key) && key !== '__gastos-probe__') {
+        keys.add(key)
+      }
+    }
+  } catch {
+    // Some browsers expose getItem but not key enumeration.
+  }
+  return [...keys]
+}
+
+function readStoredPayloads() {
+  const payloads = []
+  const seen = new Set()
+  for (const key of storageKeyList()) {
+    let raw = null
+    try {
+      raw = window.localStorage.getItem(key)
+    } catch {
+      continue
+    }
+    if (!raw || seen.has(raw)) continue
+    const parsed = parseJson(raw)
+    if (!parsed) continue
+    seen.add(raw)
+    payloads.push({ key, parsed })
+  }
+  return payloads
+}
+
+export function coerceState(parsed) {
+  if (!isPlainObject(parsed)) return null
+
+  let months = parsed.months
+  if (!isPlainObject(months)) {
+    if (Array.isArray(parsed.expenses) || Array.isArray(parsed.incomes)) {
+      months = { [SEEDED_MONTH]: parsed }
+    } else {
+      const monthKeys = Object.keys(parsed).filter((key) => /^\d{4}-\d{2}$/.test(key))
+      if (!monthKeys.length || !monthKeys.some((key) => isPlainObject(parsed[key]))) {
+        return null
+      }
+      months = {}
+      for (const key of monthKeys) {
+        if (isPlainObject(parsed[key])) months[key] = parsed[key]
+      }
+    }
+  }
+
+  const currentMonth =
+    typeof parsed.currentMonth === 'string' && /^\d{4}-\d{2}$/.test(parsed.currentMonth)
+      ? parsed.currentMonth
+      : SEEDED_MONTH
+
+  return {
+    ...parsed,
+    version: CURRENT_VERSION,
+    currentMonth,
+    months: { ...months },
+  }
+}
+
+function chargeCount(month) {
+  return (month?.expenses ?? []).reduce((sum, expense) => {
+    const charges = readExpenseCharges(expense)
+    return sum + charges.length
+  }, 0)
+}
+
+function mergeExpense(primary, extra) {
+  if (!primary) return extra
+  if (!extra) return primary
+  const primaryCharges = readExpenseCharges(primary)
+  const extraCharges = readExpenseCharges(extra)
+  const charges = extraCharges.length > primaryCharges.length ? extraCharges : primaryCharges
+  return { ...extra, ...primary, charges }
+}
+
+function mergeMonth(primary, extra) {
+  if (!primary) return extra
+  if (!extra) return primary
+  const byId = new Map()
+  for (const expense of extra.expenses ?? []) {
+    if (expense?.id) byId.set(expense.id, expense)
+  }
+  const expenses = []
+  const seen = new Set()
+  for (const expense of primary.expenses ?? []) {
+    if (expense?.id) seen.add(expense.id)
+    expenses.push(mergeExpense(expense, expense?.id ? byId.get(expense.id) : null))
+  }
+  for (const expense of extra.expenses ?? []) {
+    if (expense?.id && seen.has(expense.id)) continue
+    expenses.push(expense)
+  }
+  const useExtraShape = chargeCount(extra) > chargeCount(primary)
+  const base = useExtraShape ? extra : primary
+  const other = useExtraShape ? primary : extra
+  return {
+    ...other,
+    ...base,
+    expenses,
+    incomes: (base.incomes?.length ? base.incomes : other.incomes) ?? [],
+    categories: (base.categories?.length ? base.categories : other.categories) ?? [],
+    exchangeRate: base.exchangeRate ?? other.exchangeRate,
+  }
+}
+
+function mergeStates(primary, extra) {
+  const months = {}
+  const keys = new Set([...Object.keys(primary.months || {}), ...Object.keys(extra.months || {})])
+  for (const key of keys) {
+    months[key] = mergeMonth(primary.months?.[key], extra.months?.[key])
+  }
+  const current =
+    primary.currentMonth && months[primary.currentMonth]
+      ? primary.currentMonth
+      : extra.currentMonth && months[extra.currentMonth]
+        ? extra.currentMonth
+        : null
+  return {
+    ...extra,
+    ...primary,
+    version: CURRENT_VERSION,
+    months,
+    currentMonth: current,
+  }
+}
+
+function pickCurrentMonth(state) {
+  const keys = Object.keys(state.months || {})
+    .filter((key) => /^\d{4}-\d{2}$/.test(key))
+    .sort()
+  if (state.currentMonth && state.months?.[state.currentMonth]) return state.currentMonth
+  if (keys.includes(SEEDED_MONTH)) return SEEDED_MONTH
+  return keys[0] ?? SEEDED_MONTH
+}
+
 export function createInitialState() {
   return normalizeState({
-    version: 1,
+    version: CURRENT_VERSION,
     currentMonth: SEEDED_MONTH,
     months: {
       [SEEDED_MONTH]: createOctoberSeed(),
@@ -214,40 +409,84 @@ export function createInitialState() {
   })
 }
 
-export function emptyMonthFor(monthKey) {
-  if (monthKey === SEEDED_MONTH) return normalizeMonth(createOctoberSeed())
+export function emptyMonthFor(_monthKey) {
   return normalizeMonth(createEmptyMonth())
 }
 
+export function restoreOctoberMonth(state) {
+  const next = isPlainObject(state) ? state : createInitialState()
+  if (!isPlainObject(next.months)) next.months = {}
+  next.months[SEEDED_MONTH] = createOctoberSeed()
+  next.currentMonth = SEEDED_MONTH
+  next.version = CURRENT_VERSION
+  return normalizeState(next)
+}
+
+export function restoreOctoberPreservingOthers() {
+  const kept = {}
+  for (const { parsed } of readStoredPayloads()) {
+    const coerced = coerceState(parsed)
+    if (!coerced?.months) continue
+    for (const [key, month] of Object.entries(coerced.months)) {
+      if (key === SEEDED_MONTH) continue
+      kept[key] = mergeMonth(kept[key], month)
+    }
+  }
+  const state = createInitialState()
+  state.months = { ...kept, [SEEDED_MONTH]: createOctoberSeed() }
+  state.currentMonth = SEEDED_MONTH
+  return normalizeState(state)
+}
+
 export function loadState() {
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) {
+  let currentRaw = null
+  try {
+    currentRaw = window.localStorage.getItem(STORAGE_KEY)
+  } catch {
+    currentRaw = null
+  }
+
+  const payloads = readStoredPayloads()
+  const currentParsed = parseJson(currentRaw)
+
+  if (!currentRaw && payloads.length === 0) {
     const state = createInitialState()
     saveState(state)
     return { state, fromStorage: false }
   }
 
-  const parsed = JSON.parse(raw)
-  if (!parsed || parsed.version !== 1 || !parsed.months || typeof parsed.months !== 'object') {
+  const ordered = []
+  if (currentParsed) ordered.push(currentParsed)
+  for (const { key, parsed } of payloads) {
+    if (key === STORAGE_KEY) continue
+    ordered.push(parsed)
+  }
+
+  let merged = null
+  for (const payload of ordered) {
+    const coerced = coerceState(payload)
+    if (!coerced) continue
+    merged = merged ? mergeStates(merged, coerced) : coerced
+  }
+
+  if (!merged) {
     throw new Error('El archivo guardado no tiene un formato reconocido.')
   }
 
-  if (!parsed.currentMonth || !/^\d{4}-\d{2}$/.test(parsed.currentMonth)) {
-    parsed.currentMonth = SEEDED_MONTH
+  normalizeState(merged)
+  merged.currentMonth = pickCurrentMonth(merged)
+
+  if (!merged.months[merged.currentMonth]) {
+    merged.months[merged.currentMonth] = emptyMonthFor(merged.currentMonth)
   }
 
-  normalizeState(parsed)
-
-  if (!parsed.months[parsed.currentMonth]) {
-    parsed.months[parsed.currentMonth] = emptyMonthFor(parsed.currentMonth)
-  }
-
-  saveState(parsed)
-  return { state: parsed, fromStorage: true }
+  saveState(merged)
+  return { state: merged, fromStorage: true }
 }
 
 export function saveState(state) {
   normalizeState(state)
+  state.version = CURRENT_VERSION
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 

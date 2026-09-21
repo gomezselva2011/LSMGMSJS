@@ -1,0 +1,244 @@
+import { describe, it, beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import { STORAGE_KEY, SEEDED_MONTH, createOctoberSeed } from './seed.js'
+
+function installLocalStorage() {
+  const data = new Map()
+  const localStorage = {
+    getItem(key) {
+      return data.has(key) ? data.get(key) : null
+    },
+    setItem(key, value) {
+      data.set(String(key), String(value))
+    },
+    removeItem(key) {
+      data.delete(String(key))
+    },
+    clear() {
+      data.clear()
+    },
+    key(index) {
+      return [...data.keys()][index] ?? null
+    },
+    get length() {
+      return data.size
+    },
+  }
+  globalThis.window = { localStorage }
+  return data
+}
+
+const memory = installLocalStorage()
+const {
+  loadState,
+  saveState,
+  emptyMonthFor,
+  restoreOctoberMonth,
+  restoreOctoberPreservingOthers,
+  createInitialState,
+  normalizeExpense,
+  coerceState,
+} = await import('./storage.js')
+
+const LENTES = { id: 'chg-lentes', name: 'Lentes', amount: 20000, currency: 'USD' }
+const CELULAR = { id: 'chg-celular', name: 'Celular', amount: 30000, currency: 'USD' }
+
+function octoberWithCharges(charges) {
+  const month = createOctoberSeed()
+  const card = month.expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+  card.charges = charges
+  return month
+}
+
+function savedState(overrides = {}) {
+  return {
+    version: 1,
+    currentMonth: SEEDED_MONTH,
+    months: {
+      [SEEDED_MONTH]: octoberWithCharges([LENTES, CELULAR]),
+    },
+    ...overrides,
+  }
+}
+
+beforeEach(() => {
+  memory.clear()
+})
+
+describe('emptyMonthFor', () => {
+  it('does not plant the October seed (empty charges on TC lines)', () => {
+    const month = emptyMonthFor(SEEDED_MONTH)
+    assert.equal(month.expenses.length, 0)
+    assert.equal(
+      month.expenses.some((item) => item.id === 'exp-ot-tc-melissa'),
+      false,
+    )
+  })
+})
+
+describe('normalizeExpense charges', () => {
+  it('keeps existing charges and fills [] only when missing', () => {
+    const withCharges = normalizeExpense({
+      id: 'exp-ot-tc-melissa',
+      name: 'TC Melissa',
+      amount: 80000,
+      charges: [LENTES, CELULAR],
+    })
+    assert.equal(withCharges.charges.length, 2)
+    assert.equal(withCharges.charges[0].name, 'Lentes')
+    assert.equal(withCharges.charges[1].amount, 30000)
+
+    const missing = normalizeExpense({ id: 'exp-x', name: 'Luz', amount: 0 })
+    assert.deepEqual(missing.charges, [])
+  })
+
+  it('does not drop charges stored as subgastos or unknown extra fields', () => {
+    const next = normalizeExpense({
+      id: 'exp-ot-tc-melissa',
+      name: 'TC Melissa',
+      amount: 80000,
+      extra: 'keep-me',
+      subgastos: [{ nombre: 'Lentes', monto: 20000, moneda: 'USD' }],
+    })
+    assert.equal(next.extra, 'keep-me')
+    assert.equal(next.charges.length, 1)
+    assert.equal(next.charges[0].name, 'Lentes')
+    assert.equal(next.charges[0].amount, 20000)
+  })
+})
+
+describe('saveState / loadState charges', () => {
+  it('round-trips subgastos on TC Melissa', () => {
+    const state = savedState()
+    saveState(state)
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(loaded.fromStorage, true)
+    assert.equal(card.charges.length, 2)
+    assert.equal(card.charges[0].name, 'Lentes')
+    assert.equal(card.charges[1].name, 'Celular')
+    assert.equal(card.charges[0].amount, 20000)
+    assert.equal(card.charges[1].currency, 'USD')
+  })
+
+  it('keeps charges when the saved schema version is unknown', () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(savedState({ version: 7, extraMeta: { foo: 1 } })),
+    )
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 2)
+    assert.equal(loaded.state.extraMeta.foo, 1)
+  })
+
+  it('keeps charges when version is missing', () => {
+    const payload = savedState()
+    delete payload.version
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 2)
+  })
+
+  it('does not replace a saved October with seed on boot', () => {
+    saveState(savedState())
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    const seedCard = createOctoberSeed().expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(seedCard.charges.length, 0)
+    assert.equal(card.charges.length, 2)
+  })
+
+  it('does not plant seed October when only November exists', () => {
+    const november = octoberWithCharges([LENTES, CELULAR])
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        currentMonth: SEEDED_MONTH,
+        months: { '2026-11': november },
+      }),
+    )
+    const loaded = loadState()
+    assert.equal(loaded.state.currentMonth, '2026-11')
+    assert.equal(Boolean(loaded.state.months[SEEDED_MONTH]), false)
+    const card = loaded.state.months['2026-11'].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 2)
+  })
+
+  it('migrates charges from a legacy storage key instead of reseeding', () => {
+    window.localStorage.setItem(
+      'gastos-hogar-v2',
+      JSON.stringify(savedState({ version: 2 })),
+    )
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 2)
+    const persisted = JSON.parse(window.localStorage.getItem(STORAGE_KEY))
+    const persistedCard = persisted.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(persistedCard.charges.length, 2)
+  })
+
+  it('prefers saved charges over a seed copy of the same month', () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(createInitialState()))
+    window.localStorage.setItem('gastos-hogar-v2', JSON.stringify(savedState({ version: 2 })))
+    const loaded = loadState()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 2)
+  })
+
+  it('does not overwrite corrupt JSON with the October seed', () => {
+    window.localStorage.setItem(STORAGE_KEY, '{not-json')
+    assert.throws(() => loadState(), /formato reconocido/)
+    assert.equal(window.localStorage.getItem(STORAGE_KEY), '{not-json')
+  })
+})
+
+describe('Restaurar octubre', () => {
+  it('resets October seed charges but keeps other months', () => {
+    const state = savedState({
+      months: {
+        [SEEDED_MONTH]: octoberWithCharges([LENTES]),
+        '2026-11': octoberWithCharges([CELULAR]),
+      },
+    })
+    restoreOctoberMonth(state)
+    const october = state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    const november = state.months['2026-11'].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(october.charges.length, 0)
+    assert.equal(november.charges.length, 1)
+    assert.equal(november.charges[0].name, 'Celular')
+  })
+
+  it('fatal restore keeps November charges when October is reset', () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        savedState({
+          months: {
+            [SEEDED_MONTH]: octoberWithCharges([LENTES]),
+            '2026-11': octoberWithCharges([CELULAR]),
+          },
+        }),
+      ),
+    )
+    const state = restoreOctoberPreservingOthers()
+    const october = state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    const november = state.months['2026-11'].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(october.charges.length, 0)
+    assert.equal(november.charges[0].name, 'Celular')
+  })
+})
+
+describe('coerceState', () => {
+  it('accepts a months map without a version field', () => {
+    const next = coerceState({
+      currentMonth: SEEDED_MONTH,
+      months: { [SEEDED_MONTH]: octoberWithCharges([LENTES]) },
+    })
+    const card = next.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges[0].name, 'Lentes')
+    assert.equal(next.version, 1)
+  })
+})
