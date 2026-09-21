@@ -333,4 +333,55 @@ describe('auth store and HTTP', () => {
     assert.equal(res.headers['Content-Type'], 'image/jpeg')
     assert.equal(Buffer.concat(chunks).toString(), 'fake-lm-mark')
   })
+
+  it('logs out admin and viewer, clearing the session cookie', async () => {
+    const { cookie: adminCookie } = await loginAs(SEED_ADMIN)
+    const created = mockRes()
+    await handleAuthRequest(
+      jsonReq(
+        'POST',
+        '/api/users',
+        { name: 'Invitada', username: 'invitada', password: 'secreto1', role: 'usuario' },
+        adminCookie,
+      ),
+      created,
+      () => {},
+      store,
+    )
+    assert.equal(created.statusCode, 201)
+
+    for (const creds of [SEED_ADMIN, { username: 'invitada', password: 'secreto1' }]) {
+      const { cookie } = await loginAs(creds)
+      const meOk = mockRes()
+      await handleAuthRequest(getReq('/api/auth/me', cookie), meOk, () => {}, store)
+      assert.equal(meOk.statusCode, 200)
+
+      const logoutRes = mockRes()
+      await handleAuthRequest(jsonReq('POST', '/api/logout', {}, cookie), logoutRes, () => {}, store)
+      assert.equal(logoutRes.statusCode, 200)
+      assert.equal(JSON.parse(logoutRes.body).ok, true)
+      const setCookie = String(logoutRes.headers['Set-Cookie'] || '')
+      assert.match(setCookie, new RegExp(`${COOKIE_NAME}=`))
+      assert.match(setCookie, /Max-Age=0/)
+
+      const meGone = mockRes()
+      await handleAuthRequest(getReq('/api/auth/me', cookie), meGone, () => {}, store)
+      assert.equal(meGone.statusCode, 401)
+
+      const html = mockRes()
+      await handleAuthRequest(getReq('/', cookie, 'text/html'), html, () => {}, store)
+      assert.equal(html.statusCode, 302)
+      assert.equal(html.headers.Location, '/login')
+    }
+  })
+
+  it('also accepts POST /api/auth/logout', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const logoutRes = mockRes()
+    await handleAuthRequest(jsonReq('POST', '/api/auth/logout', {}, cookie), logoutRes, () => {}, store)
+    assert.equal(logoutRes.statusCode, 200)
+    const meGone = mockRes()
+    await handleAuthRequest(getReq('/api/auth/me', cookie), meGone, () => {}, store)
+    assert.equal(meGone.statusCode, 401)
+  })
 })

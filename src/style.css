@@ -2541,6 +2541,17 @@ body.is-readonly .admin-only {
   display: none !important;
 }
 
+.account-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.header-logout {
+  white-space: nowrap;
+}
+
 .account-chip {
   display: inline-flex;
   align-items: center;

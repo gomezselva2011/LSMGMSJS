@@ -98,13 +98,18 @@
           </div>
 
           <header class="month-tools" id="month-tools">
-            <button type="button" class="account-chip" id="account-open" aria-haspopup="dialog" aria-controls="account-dialog">
-              <img id="account-photo" src="/lm-mark.jpg" width="48" height="48" alt="" />
-              <span class="account-copy">
-                <strong id="account-name">Cuenta</strong>
-                <small id="account-role"></small>
-              </span>
-            </button>
+            <div class="account-cluster">
+              <button type="button" class="account-chip" id="account-open" aria-haspopup="dialog" aria-controls="account-dialog">
+                <img id="account-photo" src="/lm-mark.jpg" width="48" height="48" alt="" />
+                <span class="account-copy">
+                  <strong id="account-name">Cuenta</strong>
+                  <small id="account-role"></small>
+                </span>
+              </button>
+              <button type="button" class="btn btn-ghost header-logout" id="header-logout">
+                Cerrar sesión
+              </button>
+            </div>
             <div class="month-nav" role="group" aria-label="Cambiar de mes">
               <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
               <p id="month-chip">Octubre 2026</p>

@@ -2004,7 +2004,7 @@ async function fetchMe() {
 
 async function logout() {
   try {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
   } catch {
     // Still send Melissa back to login.
   }
@@ -2117,8 +2117,10 @@ function bindEvents() {
   document.querySelector('#account-close')?.addEventListener('click', () => {
     document.querySelector('#account-dialog')?.close()
   })
-  document.querySelector('#logout-btn')?.addEventListener('click', () => {
-    logout().catch((error) => console.error(error))
+  document.querySelectorAll('#logout-btn, #header-logout').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      logout().catch((error) => console.error(error))
+    })
   })
   document.querySelector('#create-profile-form')?.addEventListener('submit', (event) => {
     onCreateProfile(event).catch((error) => console.error(error))
