@@ -30,11 +30,14 @@ const formDialog = document.querySelector('#form-dialog')
 const confirmDialog = document.querySelector('#confirm-dialog')
 const itemForm = document.querySelector('#item-form')
 
+const toastEl = document.querySelector('#toast')
+
 let state = null
 let persistEnabled = true
 let persistWarning = ''
 let formContext = null
 let confirmContext = null
+let toastTimer = 0
 
 function currentMonth() {
   return state.months[state.currentMonth]
@@ -50,17 +53,73 @@ function persist() {
   if (!persistEnabled) {
     persistWarning = 'No se pudo guardar. Los cambios se perderán al cerrar esta pestaña.'
     renderBanner()
-    return
+    return false
   }
   try {
     saveState(state)
     persistWarning = ''
     renderBanner()
+    return true
   } catch (error) {
     persistWarning = 'No hay espacio para guardar en este navegador. Revisa el almacenamiento local.'
     renderBanner()
     console.error(error)
+    return false
   }
+}
+
+function showToast(message) {
+  if (!toastEl) return
+  toastEl.textContent = message
+  toastEl.hidden = false
+  window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => {
+    toastEl.hidden = true
+    toastEl.textContent = ''
+  }, 2200)
+}
+
+function saveNow() {
+  persistEnabled = storageAvailable()
+  const ok = persist()
+  if (ok) showToast('Guardado')
+}
+
+function monthAfterDelete(deletedKey) {
+  const remaining = savedMonthKeys().filter((key) => key !== deletedKey)
+  if (remaining.length === 0) return SEEDED_MONTH
+  const previous = remaining.filter((key) => key < deletedKey).at(-1)
+  const next = remaining.find((key) => key > deletedKey)
+  return previous ?? next ?? SEEDED_MONTH
+}
+
+function deleteCurrentMonth() {
+  const deleting = state.currentMonth
+  const keys = savedMonthKeys()
+  if (keys.length <= 1) {
+    persistWarning =
+      'No se puede eliminar el único mes. Debe quedar al menos un presupuesto en el hogar.'
+    renderBanner()
+    return
+  }
+
+  openConfirm({
+    title: `¿Eliminar ${formatMonthTitle(deleting)}?`,
+    message: `Se quitará el presupuesto de ${formatMonthTitle(deleting)}. Los demás meses se quedan.`,
+    confirmLabel: 'Eliminar mes',
+    onConfirm: () => {
+      const target = monthAfterDelete(deleting)
+      delete state.months[deleting]
+      if (!state.months[target]) {
+        state.months[SEEDED_MONTH] = createOctoberSeed()
+        state.currentMonth = SEEDED_MONTH
+      } else {
+        state.currentMonth = target
+      }
+      persist()
+      render()
+    },
+  })
 }
 
 function savedMonthKeys() {
@@ -153,10 +212,8 @@ function ledgerRow(item, kind) {
   const badge = item.isCard ? '<span class="badge">Tarjeta</span>' : ''
   return `
     <li class="ledger-row">
-      <div class="ledger-copy">
-        <span class="ledger-name">${escapeHtml(item.name)}${badge}</span>
-        <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
-      </div>
+      <span class="ledger-name">${escapeHtml(item.name)}${badge}</span>
+      <span class="ledger-date">${escapeHtml(formatDueDay(item.dueDay, state.currentMonth))}</span>
       <span class="ledger-amount">${formatMoney(item.amount)}</span>
       ${rowActions(kind, item.id)}
     </li>
@@ -578,6 +635,8 @@ function bindEvents() {
   document.querySelector('#prev-month').addEventListener('click', () => changeMonth(-1))
   document.querySelector('#next-month').addEventListener('click', () => changeMonth(1))
   document.querySelector('#create-next-month').addEventListener('click', createNextMonth)
+  document.querySelector('#save-budget')?.addEventListener('click', saveNow)
+  document.querySelector('#delete-month')?.addEventListener('click', deleteCurrentMonth)
   document.querySelector('#restore-october').addEventListener('click', restoreOctober)
   document.querySelector('#fatal-restore').addEventListener('click', () => {
     state = createInitialState()

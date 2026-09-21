@@ -226,7 +226,7 @@ p {
   padding: 0 0 var(--space-7);
 }
 
-.masthead {
+.top-dock {
   position: sticky;
   top: 0;
   z-index: 40;
@@ -235,7 +235,7 @@ p {
   border-bottom: 1px solid var(--line);
 }
 
-.masthead-inner {
+.top-dock-inner {
   width: min(var(--app-width), calc(100% - 2rem));
   margin: 0 auto;
   display: flex;
@@ -272,6 +272,13 @@ p {
   gap: 0.85rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.month-persist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .cta-wrap {
@@ -584,6 +591,31 @@ p {
   color: white;
 }
 
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--rose);
+  border: 1px solid #e0b9ac;
+}
+
+.btn-danger-ghost:hover {
+  background: var(--rose-soft);
+}
+
+.toast {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: 1.35rem;
+  transform: translateX(-50%);
+  background: var(--pine);
+  color: #f4fbf7;
+  border-radius: 999px;
+  padding: 0.7rem 1.25rem;
+  font-weight: 650;
+  box-shadow: var(--shadow);
+  letter-spacing: 0.01em;
+}
+
 .btn-row,
 .btn-tiny {
   min-height: var(--touch);
@@ -609,40 +641,46 @@ p {
 .ledger-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.75rem 1rem;
+  grid-template-areas:
+    'name amount actions'
+    'date amount actions';
+  column-gap: 1rem;
+  row-gap: 0.15rem;
   align-items: center;
-  min-height: 3.35rem;
-  padding: 0.7rem 0.15rem;
+  min-height: var(--touch);
+  padding: 0.75rem 0.15rem;
   border-top: 1px solid var(--line);
 }
 
-.ledger-copy {
-  min-width: 0;
-}
-
 .ledger-name {
+  grid-area: name;
   display: flex;
   align-items: center;
   gap: 0.45rem;
   font-weight: 650;
   line-height: 1.25;
+  min-width: 0;
 }
 
 .ledger-date {
-  display: block;
+  grid-area: date;
   color: var(--muted);
   font-size: var(--text-sm);
   font-weight: 500;
-  margin-top: 0.12rem;
 }
 
 .ledger-amount {
+  grid-area: amount;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   text-align: right;
   min-width: 7.2rem;
   font-size: 1.05rem;
   letter-spacing: -0.02em;
+}
+
+.ledger-row .row-actions {
+  grid-area: actions;
 }
 
 .badge {
@@ -942,7 +980,7 @@ dialog::backdrop {
     border-top: 1px solid var(--line);
   }
 
-  .masthead-inner,
+  .top-dock-inner,
   .panel-head,
   .section-head,
   .card-head,
@@ -953,48 +991,80 @@ dialog::backdrop {
     align-items: stretch;
   }
 
-  .month-tools,
-  .month-nav,
-  .cta-wrap {
-    width: 100%;
+  .top-dock {
+    display: contents;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
   }
 
-  .cta-wrap {
-    justify-items: stretch;
+  .top-dock-inner {
+    display: contents;
   }
 
+  .brand {
+    width: min(var(--app-width), calc(100% - 2rem));
+    margin: 0.75rem auto 0.35rem;
+  }
+
+  .lede,
   .cta-kicker {
-    padding-right: 0;
+    display: none;
+  }
+
+  .month-tools {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    width: auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    background: color-mix(in srgb, var(--paper) 90%, white);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+    padding: 0.4rem calc((100vw - min(var(--app-width), calc(100% - 2rem))) / 2);
+    margin: 0;
   }
 
   .month-nav {
+    flex: 1 1 12rem;
+    min-width: 0;
     justify-content: space-between;
   }
 
-  .ledger-row {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      'copy amount'
-      'actions actions';
-    gap: 0.35rem 0.75rem;
-    padding: 0.85rem 0.1rem;
-  }
-
-  .ledger-copy {
-    grid-area: copy;
-  }
-
-  .ledger-amount {
-    grid-area: amount;
+  .month-nav p {
     min-width: 0;
   }
 
-  .row-actions {
-    grid-area: actions;
+  .cta-wrap,
+  .month-persist {
+    width: auto;
+    flex: 0 1 auto;
+    justify-content: flex-end;
   }
 
-  .row-actions .btn {
-    flex: 1;
+  .stat-income .stat-hint,
+  .stat-expense .stat-hint {
+    display: none;
+  }
+
+  .stat {
+    padding: 0.9rem 1.05rem;
+  }
+
+  .ledger-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name amount'
+      'date actions';
+    column-gap: 0.75rem;
+    padding: 0.7rem 0.1rem;
+  }
+
+  .ledger-amount {
+    min-width: 0;
   }
 
   .chart-plot {
@@ -1013,12 +1083,13 @@ dialog::backdrop {
   }
 
   .app-shell,
-  .masthead-inner {
+  .brand {
     width: min(100% - 1.15rem, var(--app-width));
   }
 
-  .masthead-inner {
-    padding: 0.7rem 0;
+  .month-tools {
+    padding-left: 0.575rem;
+    padding-right: 0.575rem;
   }
 
   dialog {
@@ -1036,10 +1107,16 @@ dialog::backdrop {
   }
 
   .section-actions .btn,
-  .form-actions .btn,
-  .cta-wrap .btn {
+  .form-actions .btn {
     flex: 1;
     width: 100%;
+  }
+
+  .cta-wrap .btn,
+  .month-persist .btn {
+    width: auto;
+    min-width: 7.5rem;
+    padding-inline: 0.85rem;
   }
 }
 

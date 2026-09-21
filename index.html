@@ -32,19 +32,25 @@
     <div id="app" hidden>
       <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-      <header class="masthead">
-        <div class="masthead-inner">
+      <div class="top-dock">
+        <div class="top-dock-inner">
           <div class="brand">
             <p class="eyebrow">Gastos del hogar</p>
             <p class="household">Melissa y Lenin</p>
             <p class="lede">Casa San Andrés y Casa Praderas de Sandino</p>
           </div>
 
-          <div class="month-tools" id="month-tools">
+          <header class="month-tools" id="month-tools">
             <div class="month-nav" role="group" aria-label="Cambiar de mes">
               <button type="button" class="icon-btn" id="prev-month" aria-label="Mes anterior">‹</button>
               <p id="month-chip">Octubre 2026</p>
               <button type="button" class="icon-btn" id="next-month" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="month-persist" role="group" aria-label="Guardar o eliminar el mes">
+              <button type="button" class="btn btn-primary" id="save-budget">Guardar</button>
+              <button type="button" class="btn btn-ghost btn-danger-ghost" id="delete-month">
+                Eliminar mes
+              </button>
             </div>
             <div class="cta-wrap" id="create-next-wrap">
               <p class="cta-kicker">Siguiente paso</p>
@@ -52,9 +58,9 @@
                 Crear noviembre
               </button>
             </div>
-          </div>
+          </header>
         </div>
-      </header>
+      </div>
 
       <div class="app-shell">
         <nav class="view-tabs" hidden aria-label="Vistas del hogar" id="view-tabs"></nav>
@@ -243,6 +249,8 @@
         </div>
       </form>
     </dialog>
+
+    <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
 
     <script type="module" src="/src/main.js"></script>
   </body>
