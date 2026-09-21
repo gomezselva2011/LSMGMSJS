@@ -60,6 +60,7 @@ import {
   paymentStatusLabel,
   setLinePaid,
 } from './payment-status.js'
+import { bindExpenseHoverSnippet } from './hover-snippet.js'
 
 const bootEl = document.querySelector('#boot')
 const fatalEl = document.querySelector('#fatal')
@@ -105,6 +106,7 @@ let overdueAlertShown = false
 const expandedSubgastoIds = new Set()
 const DRAG_MIME = 'application/x-gastos-expense'
 const CATEGORY_MIME = 'application/x-gastos-category'
+let expenseSnippet = null
 
 function currentMonth() {
   return state?.months?.[state.currentMonth] ?? null
@@ -683,6 +685,7 @@ function renderCategories() {
 
 function setView(view) {
   currentView = view === 'analytics' ? 'analytics' : 'budget'
+  expenseSnippet?.hide()
   const budget = document.querySelector('.view-budget')
   const analytics = document.querySelector('#analytics')
   if (budget) budget.hidden = currentView !== 'budget'
@@ -730,6 +733,7 @@ function selectRubro(rubroId) {
 
 function render() {
   if (!state || !currentMonth()) return
+  expenseSnippet?.hide()
   applySessionChrome()
   renderBanner()
   renderSummary()
@@ -1104,6 +1108,7 @@ function fillDetailsForm(item) {
 function openDetails(id) {
   const item = currentMonth().expenses.find((entry) => entry.id === id)
   if (!item || !detailsDialog) return
+  expenseSnippet?.hide()
   detailsExpenseId = id
   fillDetailsForm(item)
   resetChargeForm(item)
@@ -2384,6 +2389,14 @@ function bindEvents() {
   })
   document.querySelector('#overdue-form')?.addEventListener('submit', () => {
     overdueDialog?.close()
+  })
+  expenseSnippet = bindExpenseHoverSnippet({
+    root: categoryGridEl,
+    snippetEl: document.querySelector('#expense-hover-snippet'),
+    getExpense: (id) => currentMonth()?.expenses.find((entry) => entry.id === id) ?? null,
+    getMonthKey: () => state?.currentMonth,
+    getRate: () => currentMonth()?.exchangeRate,
+    isActive: () => currentView === 'budget',
   })
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
