@@ -50,7 +50,7 @@ describe('expenseSnippetRows', () => {
   it('includes Spanish fields that exist and skips empty ones', () => {
     const rows = expenseSnippetRows(CASA, { monthKey: '2026-10', rate: 36.6 })
     const map = Object.fromEntries(rows.map((row) => [row.key, row]))
-    assert.equal(map.nombre.value, 'Casa')
+    assert.equal(map.nombre, undefined)
     assert.match(map.monto.value, /\$172\.00/)
     assert.match(map.monto.value, /C\$6,295\.20/)
     assert.equal(map.fecha.value, '15 de octubre')
@@ -88,7 +88,7 @@ describe('expenseSnippetRows', () => {
       { monthKey: '2026-10' },
     )
     const keys = rows.map((row) => row.key)
-    assert.deepEqual(keys, ['nombre', 'monto', 'fecha', 'estado'])
+    assert.deepEqual(keys, ['monto', 'fecha', 'estado'])
     assert.equal(rows.find((row) => row.key === 'fecha').value, 'Sin fecha')
   })
 

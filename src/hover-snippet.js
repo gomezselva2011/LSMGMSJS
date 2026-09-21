@@ -77,8 +77,6 @@ export function expenseSnippetRows(item, { monthKey, rate } = {}) {
   if (!item || typeof item !== 'object') return []
   const details = normalizeDetails(item.details)
   const rows = []
-  const name = String(item.name || '').trim()
-  if (name) rows.push({ key: 'nombre', label: 'Nombre', value: name })
   rows.push({ key: 'monto', label: 'Monto', value: formatLineMonto(item, rate) })
   rows.push({
     key: 'fecha',
@@ -130,17 +128,20 @@ export function expenseSnippetHtml(item, options = {}) {
   `
 }
 
-function clampPosition(el, clientX, clientY) {
-  const gap = 14
+function clampPosition(el, clientX, clientY, row) {
+  const gap = 12
   const pad = 8
   const width = el.offsetWidth || 280
   const height = el.offsetHeight || 160
+  const rowRect = row?.getBoundingClientRect?.()
   let left = clientX + gap
-  let top = clientY + gap
+  let top = rowRect ? rowRect.bottom + 8 : clientY + gap
   const maxLeft = window.innerWidth - width - pad
   const maxTop = window.innerHeight - height - pad
-  if (left > maxLeft) left = clientX - width - gap
-  if (top > maxTop) top = clientY - height - gap
+  if (left > maxLeft) left = Math.max(pad, clientX - width - gap)
+  if (top > maxTop) {
+    top = rowRect ? rowRect.top - height - 8 : clientY - height - gap
+  }
   left = Math.min(Math.max(pad, left), Math.max(pad, maxLeft))
   top = Math.min(Math.max(pad, top), Math.max(pad, maxTop))
   el.style.left = `${Math.round(left)}px`
@@ -189,7 +190,7 @@ export function bindExpenseHoverSnippet({
       return
     }
     if (activeRow === row && !snippetEl.hidden) {
-      clampPosition(snippetEl, event.clientX, event.clientY)
+      clampPosition(snippetEl, event.clientX, event.clientY, row)
       return
     }
     const expense = getExpense?.(row.dataset.expenseId)
@@ -209,7 +210,7 @@ export function bindExpenseHoverSnippet({
     snippetEl.innerHTML = html
     snippetEl.hidden = false
     snippetEl.setAttribute('aria-hidden', 'false')
-    clampPosition(snippetEl, event.clientX, event.clientY)
+    clampPosition(snippetEl, event.clientX, event.clientY, row)
   }
 
   function onPointerOver(event) {
@@ -234,7 +235,7 @@ export function bindExpenseHoverSnippet({
     }
     const row = rowFrom(event.target)
     if (row !== activeRow) return
-    clampPosition(snippetEl, event.clientX, event.clientY)
+    clampPosition(snippetEl, event.clientX, event.clientY, row)
   }
 
   function onMediaChange() {
