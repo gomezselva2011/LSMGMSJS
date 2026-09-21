@@ -1101,11 +1101,24 @@ button.ledger-name:hover {
 .foot {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   margin-top: var(--space-6);
   padding-top: var(--space-4);
   border-top: 1px solid var(--line);
+}
+
+.foot-main {
+  display: grid;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 dialog {

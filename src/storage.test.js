@@ -32,12 +32,15 @@ const memory = installLocalStorage()
 const {
   loadState,
   saveState,
+  loadHousehold,
   emptyMonthFor,
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
   createInitialState,
   normalizeExpense,
   coerceState,
+  importStateFromText,
+  GASTOS_API_PATH,
 } = await import('./storage.js')
 
 const LENTES = { id: 'chg-lentes', name: 'Lentes', amount: 20000, currency: 'USD' }
@@ -63,6 +66,7 @@ function savedState(overrides = {}) {
 
 beforeEach(() => {
   memory.clear()
+  delete window.fetch
 })
 
 describe('emptyMonthFor', () => {
@@ -240,5 +244,88 @@ describe('coerceState', () => {
     const card = next.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
     assert.equal(card.charges[0].name, 'Lentes')
     assert.equal(next.version, 1)
+  })
+})
+
+describe('loadHousehold server store', () => {
+  let stored
+  let puts
+
+  beforeEach(() => {
+    stored = null
+    puts = []
+    window.fetch = async (url, opts = {}) => {
+      assert.equal(String(url).split('?')[0], GASTOS_API_PATH)
+      const method = String(opts.method || 'GET').toUpperCase()
+      if (method === 'GET') {
+        return {
+          ok: true,
+          async json() {
+            return stored ?? {}
+          },
+        }
+      }
+      if (method === 'PUT' || method === 'POST') {
+        const body = JSON.parse(String(opts.body))
+        puts.push(body)
+        stored = body
+        return { ok: true, async json() { return { ok: true } } }
+      }
+      return { ok: false, async json() { return {} } }
+    }
+  })
+
+  it('uses the server file and does not replace it with the October seed', async () => {
+    stored = savedState()
+    const loaded = await loadHousehold()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    const seedCard = createOctoberSeed().expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(loaded.fromServer, true)
+    assert.equal(seedCard.charges.length, 0)
+    assert.equal(card.charges.length, 2)
+    assert.equal(card.charges[0].name, 'Lentes')
+    assert.equal(puts.length >= 1, true)
+    assert.equal(
+      puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges.length,
+      2,
+    )
+  })
+
+  it('seeds once when server and browser are empty, then writes the server file', async () => {
+    stored = {}
+    const loaded = await loadHousehold()
+    assert.equal(loaded.fromStorage, false)
+    assert.equal(loaded.fromServer, false)
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges.length, 0)
+    assert.equal(puts.length >= 1, true)
+    assert.equal(puts.at(-1).currentMonth, SEEDED_MONTH)
+  })
+
+  it('copies localStorage to the server when the server file is empty', async () => {
+    saveState(savedState())
+    stored = {}
+    const loaded = await loadHousehold()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(loaded.fromStorage, true)
+    assert.equal(loaded.fromServer, false)
+    assert.equal(card.charges[1].name, 'Celular')
+    assert.equal(
+      puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges[1].name,
+      'Celular',
+    )
+  })
+})
+
+describe('importStateFromText', () => {
+  it('loads a downloaded backup without reseeding', () => {
+    const next = importStateFromText(JSON.stringify(savedState()))
+    const card = next.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(card.charges[0].name, 'Lentes')
+  })
+
+  it('rejects junk', () => {
+    assert.throws(() => importStateFromText('{not-json'), /presupuesto reconocido/)
+    assert.throws(() => importStateFromText('{}'), /presupuesto reconocido/)
   })
 })

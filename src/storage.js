@@ -438,7 +438,23 @@ export function restoreOctoberPreservingOthers() {
   return normalizeState(state)
 }
 
-export function loadState() {
+export function hasHouseholdData(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return false
+  const months = state.months
+  if (!isPlainObject(months)) return false
+  return Object.keys(months).some((key) => /^\d{4}-\d{2}$/.test(key) && isPlainObject(months[key]))
+}
+
+function finalizeState(state) {
+  normalizeState(state)
+  state.currentMonth = pickCurrentMonth(state)
+  if (!state.months[state.currentMonth]) {
+    state.months[state.currentMonth] = emptyMonthFor(state.currentMonth)
+  }
+  return state
+}
+
+export function readLocalState() {
   let currentRaw = null
   try {
     currentRaw = window.localStorage.getItem(STORAGE_KEY)
@@ -450,9 +466,7 @@ export function loadState() {
   const currentParsed = parseJson(currentRaw)
 
   if (!currentRaw && payloads.length === 0) {
-    const state = createInitialState()
-    saveState(state)
-    return { state, fromStorage: false }
+    return { state: null, fromStorage: false }
   }
 
   const ordered = []
@@ -473,15 +487,121 @@ export function loadState() {
     throw new Error('El archivo guardado no tiene un formato reconocido.')
   }
 
-  normalizeState(merged)
-  merged.currentMonth = pickCurrentMonth(merged)
+  return { state: finalizeState(merged), fromStorage: true }
+}
 
-  if (!merged.months[merged.currentMonth]) {
-    merged.months[merged.currentMonth] = emptyMonthFor(merged.currentMonth)
+export function loadState() {
+  const local = readLocalState()
+  if (!local.state) {
+    const state = createInitialState()
+    saveState(state)
+    return { state, fromStorage: false }
+  }
+  saveState(local.state)
+  return { state: local.state, fromStorage: true }
+}
+
+export const GASTOS_API_PATH = '/api/gastos'
+
+function canTalkToServer() {
+  return typeof window !== 'undefined' && typeof window.fetch === 'function'
+}
+
+export async function fetchServerState() {
+  if (!canTalkToServer()) return null
+  try {
+    const res = await window.fetch(GASTOS_API_PATH, { cache: 'no-store' })
+    if (!res.ok) return null
+    const parsed = await res.json()
+    const coerced = coerceState(parsed)
+    if (!coerced || !hasHouseholdData(coerced)) return null
+    return finalizeState(coerced)
+  } catch {
+    return null
+  }
+}
+
+let pendingServerPayload = null
+let serverSaveTimer = 0
+
+export function queueServerSave(state) {
+  if (!state || !canTalkToServer()) return
+  normalizeState(state)
+  pendingServerPayload = JSON.stringify(state)
+  if (typeof window.setTimeout !== 'function') {
+    flushServerSave().catch((error) => console.error(error))
+    return
+  }
+  window.clearTimeout(serverSaveTimer)
+  serverSaveTimer = window.setTimeout(() => {
+    flushServerSave().catch((error) => console.error(error))
+  }, 250)
+}
+
+export async function flushServerSave() {
+  if (typeof window !== 'undefined' && typeof window.clearTimeout === 'function') {
+    window.clearTimeout(serverSaveTimer)
+  }
+  if (!pendingServerPayload || !canTalkToServer()) return
+  const payload = pendingServerPayload
+  pendingServerPayload = null
+  const res = await window.fetch(GASTOS_API_PATH, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    pendingServerPayload = payload
+    throw new Error('No se pudo guardar el presupuesto en el servidor.')
+  }
+}
+
+async function finishLoadedState(state, flags) {
+  finalizeState(state)
+  try {
+    saveState(state)
+  } catch {
+    // localStorage may be blocked; the server copy is still written below.
+  }
+  queueServerSave(state)
+  try {
+    await flushServerSave()
+  } catch (error) {
+    console.error(error)
+  }
+  return { state, ...flags }
+}
+
+export async function loadHousehold() {
+  const server = await fetchServerState()
+  let local = null
+  try {
+    local = readLocalState().state
+  } catch (error) {
+    if (!server) throw error
   }
 
-  saveState(merged)
-  return { state: merged, fromStorage: true }
+  if (server) {
+    const merged = local ? mergeStates(server, local) : server
+    return finishLoadedState(merged, { fromStorage: Boolean(local), fromServer: true })
+  }
+
+  if (local) {
+    return finishLoadedState(local, { fromStorage: true, fromServer: false })
+  }
+
+  const state = createInitialState()
+  return finishLoadedState(state, { fromStorage: false, fromServer: false })
+}
+
+export function importStateFromText(raw) {
+  const parsed = parseJson(raw)
+  const coerced = coerceState(parsed)
+  if (!coerced || !hasHouseholdData(coerced)) {
+    throw new Error('El archivo no tiene un presupuesto reconocido.')
+  }
+  return finalizeState(coerced)
 }
 
 export function saveState(state) {

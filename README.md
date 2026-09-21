@@ -2,7 +2,9 @@
 
 Presupuesto mensual de Melissa y Lenin: Casa San Andrés, Casa Praderas de Sandino y el resto de gastos del mes. La interfaz está en español. Octubre 2026 viene precargado desde la hoja **Gastos**, con ingreso real de **$4,800** (no $5,000). Los gastos de la hoja se mantienen; el balance usa esos $4,800.
 
-No hay cuenta ni base de datos. Todo se guarda en `localStorage` de este navegador.
+No hay cuenta ni base de datos. El presupuesto vive en un archivo JSON en el servidor de la app (`data/gastos.json`) y también en `localStorage` de este navegador. **Guardar** y cada edición escriben las dos copias. Una ventana o teléfono nuevos en la misma dirección ven lo último guardado. **Restaurar octubre 2026** solo corre si lo pides.
+
+En el pie puedes **Descargar copia** o **Restaurar desde archivo**.
 
 ## Cómo ejecutarlo
 

@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Household save file (survives Vite restart; not committed)
+data/gastos.json
+data/*.tmp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

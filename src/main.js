@@ -4,19 +4,21 @@ import {
   applyCategoryLayout,
   cardSummary,
   cloneMonth,
-  createInitialState,
   detailsAreEmpty,
   emptyDetails,
   LAYOUT_FULL,
   LAYOUT_HALF,
-  loadState,
   looksLikeCardName,
   normalizeDetails,
+  queueServerSave,
   reorderCategories,
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
   saveState,
   storageAvailable,
+  flushServerSave,
+  importStateFromText,
+  loadHousehold,
 } from './storage.js'
 import {
   centsToInput,
@@ -95,22 +97,21 @@ function currentMonth() {
 }
 
 function persist() {
-  if (!persistEnabled) {
-    persistWarning = 'No se pudo guardar. Los cambios se perderán al cerrar esta pestaña.'
-    renderBanner()
-    return false
-  }
+  let localOk = false
   try {
     saveState(state)
-    persistWarning = ''
-    renderBanner()
-    return true
+    localOk = true
+    persistEnabled = true
   } catch (error) {
-    persistWarning = 'No hay espacio para guardar en este navegador. Revisa el almacenamiento local.'
-    renderBanner()
+    persistEnabled = false
     console.error(error)
-    return false
   }
+  queueServerSave(state)
+  persistWarning = localOk
+    ? ''
+    : 'No se pudo guardar en este navegador. Se está escribiendo en el servidor de la app.'
+  renderBanner()
+  return true
 }
 
 function showToast(message) {
@@ -124,10 +125,18 @@ function showToast(message) {
   }, 2200)
 }
 
-function saveNow() {
-  if (!persistEnabled) persistEnabled = storageAvailable()
-  const ok = persist()
-  if (ok) showToast('Guardado')
+async function saveNow() {
+  persist()
+  try {
+    await flushServerSave()
+    showToast('Guardado')
+  } catch (error) {
+    console.error(error)
+    persistWarning =
+      'Guardado en este navegador, pero el servidor no respondió. Abre la misma dirección para no perder los cambios.'
+    renderBanner()
+    showToast('Guardado en este navegador')
+  }
 }
 
 function monthAfterDelete(deletedKey) {
@@ -1258,6 +1267,51 @@ function restoreOctober() {
   })
 }
 
+function downloadBackup() {
+  if (!state) return
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `gastos-hogar-${state.currentMonth}.json`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  showToast('Copia descargada')
+}
+
+function restoreFromFile() {
+  document.querySelector('#restore-file-input')?.click()
+}
+
+async function onRestoreFileChange(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  let next
+  try {
+    next = importStateFromText(await file.text())
+  } catch (error) {
+    persistWarning = error instanceof Error ? error.message : 'No se pudo leer el archivo.'
+    renderBanner()
+    return
+  }
+  openConfirm({
+    title: '¿Restaurar desde archivo?',
+    message: `Se reemplazará el presupuesto actual por «${file.name}». Los meses, gastos y subgastos del archivo pasan al servidor. Restaurar octubre no se ejecuta solo.`,
+    confirmLabel: 'Restaurar',
+    onConfirm: () => {
+      state = next
+      persist()
+      flushServerSave().catch((error) => console.error(error))
+      render()
+      showToast('Presupuesto restaurado')
+    },
+  })
+}
+
 function createNextMonth() {
   const fromKey = state.currentMonth
   const next = shiftMonth(fromKey, 1)
@@ -1833,6 +1887,9 @@ function bindEvents() {
   document.querySelector('#save-budget')?.addEventListener('click', saveNow)
   document.querySelector('#delete-month')?.addEventListener('click', deleteCurrentMonth)
   document.querySelector('#restore-october').addEventListener('click', restoreOctober)
+  document.querySelector('#download-backup')?.addEventListener('click', downloadBackup)
+  document.querySelector('#restore-file')?.addEventListener('click', restoreFromFile)
+  document.querySelector('#restore-file-input')?.addEventListener('change', onRestoreFileChange)
   document.querySelector('#fatal-restore').addEventListener('click', () => {
     state = restoreOctoberPreservingOthers()
     persistEnabled = storageAvailable()
@@ -1924,27 +1981,24 @@ function bindEvents() {
   })
 }
 
-function start() {
+async function start() {
   try {
     bindEvents()
     persistEnabled = storageAvailable()
-    if (!persistEnabled) {
-      persistWarning =
-        'Este navegador no permite guardar datos locales. Puedes usar la app, pero se perderá al salir.'
-      state = createInitialState()
-      showApp()
-      return
-    }
-
-    const loaded = loadState()
+    const loaded = await loadHousehold()
     state = loaded.state
+    if (!persistEnabled) {
+      persistWarning = loaded.fromServer
+        ? 'Este navegador no guarda una copia local. Los cambios se escriben en el servidor de la app.'
+        : 'Este navegador no permite guardar datos locales. Se intentará usar el servidor de la app.'
+    }
     showApp()
   } catch (error) {
     console.error(error)
     showFatal(
       error instanceof Error
         ? error.message
-        : 'No se pudieron leer los datos guardados en este navegador.',
+        : 'No se pudieron leer los datos guardados.',
     )
   }
 }
