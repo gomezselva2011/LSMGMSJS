@@ -525,6 +525,21 @@ p {
   color: var(--terracotta);
 }
 
+.payment-statement {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: var(--space-5);
+}
+
+.stat-paid .stat-label,
+.stat-paid .stat-value {
+  color: var(--pine);
+}
+
+.stat-unpaid .stat-label,
+.stat-unpaid .stat-value {
+  color: var(--terracotta);
+}
+
 .stat-value {
   display: block;
   margin-top: 0.45rem;
@@ -1857,6 +1872,7 @@ dialog::backdrop {
 
 @media (max-width: 860px) {
   .statement,
+  .payment-statement,
   .category-grid,
   .card-stats,
   .fx-panel,

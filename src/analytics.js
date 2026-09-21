@@ -13,6 +13,7 @@ import {
 } from './format.js'
 import { categoryTotalUsd, formatRate, isValidRate, monthTotals } from './money.js'
 import { monthOverMonthHtml } from './mom.js'
+import { monthPaidUnpaidTotals } from './payment-totals.js'
 import { buildRubroBreakdown, rubroMeta, rubroUsd, summarizeRubros } from './rubros.js'
 
 export const MODE_TOTALS = 'totals'
@@ -274,6 +275,10 @@ function deltaCell(next, prev) {
   return `${sign}${formatMoney(Math.abs(delta), 'USD')}`
 }
 
+function moneyOrEmptyNio(cents) {
+  return cents == null ? '' : formatMoney(cents, 'NIO')
+}
+
 function nowStrip(entry) {
   if (!entry) return ''
   if (!entry.totals.ok) {
@@ -288,6 +293,34 @@ function nowStrip(entry) {
   )} · balance ${escapeHtml(formatMoney(entry.totals.netUsd, 'USD'))} · tasa ${escapeHtml(
     rateLabel(entry.rate),
   )} C$ por 1 USD.</p>`
+}
+
+function paymentCards(month, monthKey) {
+  const title = monthKey ? formatMonthTitle(monthKey) : 'este mes'
+  const totals = monthPaidUnpaidTotals(month)
+  const fxError = totals.ok ? '' : ' is-fx-error'
+  const hint = totals.ok
+    ? `Totales en dólares, usando la tasa de ${escapeHtml(title)} (${escapeHtml(
+        rateLabel(totals.rate),
+      )} C$ por 1 USD). Solo el monto de cada partida; los subgastos no se suman otra vez.`
+    : `Falta una tasa válida en ${escapeHtml(title)} para convertir C$ y $ al mismo dólar.`
+  return `
+    <section class="statement payment-statement${fxError}" id="analytics-pago" aria-label="Lo pagado y lo que falta este mes">
+      <article class="stat stat-paid">
+        <span class="stat-label">Lo que ya se pagó</span>
+        <strong class="stat-value" id="analytics-paid">${escapeHtml(moneyOrDash(totals.paidUsd))}</strong>
+        <span class="stat-alt" id="analytics-paid-alt">${escapeHtml(moneyOrEmptyNio(totals.paidNio))}</span>
+        <span class="stat-hint">Partidas marcadas como pagadas</span>
+      </article>
+      <article class="stat stat-unpaid">
+        <span class="stat-label">Lo que no se ha pagado</span>
+        <strong class="stat-value" id="analytics-unpaid">${escapeHtml(moneyOrDash(totals.unpaidUsd))}</strong>
+        <span class="stat-alt" id="analytics-unpaid-alt">${escapeHtml(moneyOrEmptyNio(totals.unpaidNio))}</span>
+        <span class="stat-hint">Pendiente, parcial y atrasado</span>
+      </article>
+      <p class="statement-note">${hint}</p>
+    </section>
+  `
 }
 
 function insightCards(insights) {
@@ -1030,6 +1063,7 @@ export function analyticsHtml(
         : totalsView(entries)
   return `
     <h1 id="analytics-title" tabindex="-1">Analítica</h1>
+    ${paymentCards(month, current?.key ?? currentKey)}
     <p class="analytics-lede">
       Lectura de Melissa y Lenin: dos casas, dólares y córdobas. Cada mes se convierte con su
       propia tasa. Los subgastos no se cuentan otra vez. El rubro agrupa el mismo tipo de vida
