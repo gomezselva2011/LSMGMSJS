@@ -5,6 +5,7 @@ import {
   STATUS_PAID,
   STATUS_PARTIAL,
   STATUS_UNPAID,
+  formatOverdueLede,
   isDueBeforeToday,
   isOutstanding,
   listOverduePayments,
@@ -125,5 +126,18 @@ describe('listOverduePayments', () => {
     assert.ok(afterOctober.length > 0)
     assert.ok(afterOctober.every((line) => line.dueDay && line.dueDay <= 31))
     assert.equal(afterOctober.some((line) => line.name === 'Iglesia'), false)
+  })
+})
+
+describe('formatOverdueLede', () => {
+  it('keeps singular and plural nouns defined', () => {
+    assert.equal(
+      formatOverdueLede(1, 'septiembre 2026'),
+      '1 gasto de septiembre 2026 ya pasó su fecha y sigue sin pagar o solo se pagó en parte.',
+    )
+    assert.equal(
+      formatOverdueLede(3, 'agosto 2026'),
+      '3 gastos de agosto 2026 ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte.',
+    )
   })
 })

@@ -10,7 +10,7 @@ import {
   createEmptyMonth,
   cloneMonth as duplicateMonth,
 } from './seed.js'
-import { isMonthKey, newId } from './format.js'
+import { isMonthKey, newId, shiftMonth } from './format.js'
 import {
   DEFAULT_EXCHANGE_RATE,
   convertCents,
@@ -191,9 +191,26 @@ export function normalizeMonth(month) {
 }
 
 export function cloneMonth(month) {
-  const source = month && typeof month === 'object' ? month : createEmptyMonth()
-  const copy = duplicateMonth(source)
-  return normalizeMonth(copy)
+  if (!month || typeof month !== 'object' || Array.isArray(month)) return null
+  return normalizeMonth(duplicateMonth(month))
+}
+
+export function copyMonthAdjacent(state, delta, fromKey) {
+  if (!state || typeof state !== 'object') return null
+  if (!isPlainObject(state.months)) state.months = {}
+  const originKey = isMonthKey(fromKey) ? fromKey : state.currentMonth
+  const source = state.months[originKey]
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null
+  const target = shiftMonth(originKey, delta)
+  if (!isMonthKey(target) || target === originKey) return null
+  const cloned = cloneMonth(source)
+  if (!cloned) return null
+  const sourceExpenses = Array.isArray(source.expenses) ? source.expenses.length : 0
+  const clonedExpenses = Array.isArray(cloned.expenses) ? cloned.expenses.length : 0
+  if (sourceExpenses > 0 && clonedExpenses === 0) return null
+  state.months[target] = cloned
+  state.currentMonth = target
+  return target
 }
 
 export function applyCategoryLayout(month, id, layout) {
@@ -599,10 +616,15 @@ async function finishLoadedState(state, flags) {
     // localStorage may be blocked; the server copy is still written below.
   }
   queueServerSave(state)
-  try {
-    await flushServerSave()
-  } catch (error) {
-    console.error(error)
+  const waitForFlush = !flags.fromServer && !flags.fromStorage
+  if (waitForFlush) {
+    try {
+      await flushServerSave()
+    } catch (error) {
+      console.error(error)
+    }
+  } else {
+    flushServerSave().catch((error) => console.error(error))
   }
   return { state, ...flags }
 }

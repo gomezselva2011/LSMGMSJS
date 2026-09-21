@@ -476,9 +476,11 @@ export function writeHouseholdState(db, data) {
     const existingKeys = new Set(db.prepare('SELECT id FROM months').all().map((row) => row.id))
     const incoming = new Set(incomingKeys)
 
-    for (const id of existingKeys) {
-      if (!incoming.has(id)) {
-        db.prepare('DELETE FROM months WHERE id = ?').run(id)
+    if (saveScope === 'all') {
+      for (const id of existingKeys) {
+        if (!incoming.has(id)) {
+          db.prepare('DELETE FROM months WHERE id = ?').run(id)
+        }
       }
     }
 

@@ -210,4 +210,27 @@ describe('sqlite household db', () => {
     assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM months').get().n, 2)
   })
+
+  it('current-scope write of only September does not delete October', async () => {
+    const root = await tmpRoot()
+    const dbPath = path.join(root, 'data', 'gastos.sqlite')
+    const db = openGastosDb({ dbPath })
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      months: { '2026-10': octoberFixture() },
+    })
+    writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-09',
+      saveScope: 'current',
+      months: { '2026-09': octoberFixture({ amount: 80000, paymentStatus: 'paid' }) },
+    })
+    const again = readHouseholdState(db)
+    assert.deepEqual(Object.keys(again.months).sort(), ['2026-09', '2026-10'])
+    assert.equal(again.currentMonth, '2026-09')
+    assert.equal(again.months['2026-09'].expenses[0].paymentStatus, 'paid')
+    assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
+    assert.equal(again.months['2026-09'].expenses[0].charges[0].name, 'Lentes')
+  })
 })

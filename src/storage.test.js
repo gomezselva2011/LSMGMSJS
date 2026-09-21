@@ -41,6 +41,7 @@ const {
   coerceState,
   importStateFromText,
   cloneMonth,
+  copyMonthAdjacent,
   GASTOS_API_PATH,
 } = await import('./storage.js')
 
@@ -121,6 +122,33 @@ describe('cloneMonth', () => {
     assert.equal(months['2026-10'].expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount, 80000)
     assert.equal(months['2026-10'].exchangeRate, october.exchangeRate)
     assert.equal(september.expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount, 90000)
+  })
+})
+
+describe('copyMonthAdjacent', () => {
+  it('assigns a full October clone to months[2026-09] before switching the viewed month', () => {
+    const state = createInitialState()
+    const october = state.months[SEEDED_MONTH]
+    const expenseCount = october.expenses.length
+    const incomeCount = october.incomes.length
+    const target = copyMonthAdjacent(state, -1, SEEDED_MONTH)
+    assert.equal(target, '2026-09')
+    assert.equal(state.currentMonth, '2026-09')
+    assert.equal(state.months['2026-09'].expenses.length, expenseCount)
+    assert.equal(state.months['2026-09'].incomes.length, incomeCount)
+    assert.equal(state.months[SEEDED_MONTH].expenses.length, expenseCount)
+    state.months['2026-09'].incomes[0].amount = 1
+    assert.equal(state.months[SEEDED_MONTH].incomes[0].amount, 258000)
+  })
+
+  it('still clones October when currentMonth was switched before the copy exists', () => {
+    const state = createInitialState()
+    state.currentMonth = '2026-09'
+    const target = copyMonthAdjacent(state, -1, SEEDED_MONTH)
+    assert.equal(target, '2026-09')
+    assert.equal(state.months['2026-09'].expenses.length > 0, true)
+    assert.equal(copyMonthAdjacent(state, -1, '2026-07'), null)
+    assert.equal(Boolean(state.months['2026-06']), false)
   })
 })
 

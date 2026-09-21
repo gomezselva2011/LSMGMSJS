@@ -117,3 +117,13 @@ export function paymentStatusLabel(status) {
   if (normalized === PAYMENT_LATE) return 'Atrasado'
   return 'Sin pagar'
 }
+
+export function formatOverdueLede(count, monthTitle) {
+  const n = Number(count) || 0
+  const noun = n === 1 ? 'gasto' : 'gastos'
+  const verb =
+    n === 1
+      ? 'ya pasó su fecha y sigue sin pagar o solo se pagó en parte'
+      : 'ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte'
+  return `${n} ${noun} de ${monthTitle} ${verb}.`
+}

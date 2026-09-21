@@ -4,7 +4,7 @@ import { createOctoberSeed, SEEDED_MONTH } from './seed.js'
 import {
   applyCategoryLayout,
   cardSummary,
-  cloneMonth,
+  copyMonthAdjacent,
   detailsAreEmpty,
   emptyDetails,
   LAYOUT_FULL,
@@ -54,6 +54,7 @@ import {
   rubroMeta,
 } from './rubros.js'
 import {
+  formatOverdueLede,
   listOverduePayments,
   paymentStatusLabel,
 } from './payment-status.js'
@@ -104,7 +105,7 @@ const DRAG_MIME = 'application/x-gastos-expense'
 const CATEGORY_MIME = 'application/x-gastos-category'
 
 function currentMonth() {
-  return state.months[state.currentMonth]
+  return state?.months?.[state.currentMonth] ?? null
 }
 
 function canEdit() {
@@ -257,7 +258,7 @@ function deleteCurrentMonth() {
       } else {
         state.currentMonth = target
       }
-      persist()
+      persist({ allMonths: true })
       render()
     },
   })
@@ -694,6 +695,7 @@ function selectRubro(rubroId) {
 }
 
 function render() {
+  if (!state || !currentMonth()) return
   applySessionChrome()
   renderBanner()
   renderSummary()
@@ -736,25 +738,26 @@ function fillOverdueDialog(lines) {
   const monthTitle = formatMonthTitle(state.currentMonth)
   const lede = document.querySelector('#overdue-lede')
   if (lede) {
-    const count = lines.length
-    const verb =
-      count === 1
-        ? 'ya pasó su fecha y sigue sin pagar o solo se pagó en parte'
-        : 'ya pasaron su fecha y siguen sin pagar o solo se pagaron en parte'
-    lede.textContent = `${count} ${noun} de ${monthTitle} ${verb}.`
+    lede.textContent = formatOverdueLede(lines.length, monthTitle)
   }
   const list = document.querySelector('#overdue-list')
   if (list) list.innerHTML = lines.map(overdueLineHtml).join('')
 }
 
 function maybeShowOverdueAlert() {
-  if (overdueAlertShown || !overdueDialog || !state) return
-  const lines = listOverduePayments(currentMonth(), state.currentMonth)
-  if (!lines.length) return
-  overdueAlertShown = true
-  fillOverdueDialog(lines)
-  if (!overdueDialog.open) overdueDialog.showModal()
-  document.querySelector('#overdue-ok')?.focus()
+  try {
+    if (overdueAlertShown || !overdueDialog || !state) return
+    const month = currentMonth()
+    if (!month) return
+    const lines = listOverduePayments(month, state.currentMonth)
+    if (!lines.length) return
+    overdueAlertShown = true
+    fillOverdueDialog(lines)
+    if (!overdueDialog.open) overdueDialog.showModal()
+    document.querySelector('#overdue-ok')?.focus()
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 function openOverdueLine(expenseId) {
@@ -1504,15 +1507,11 @@ async function onRestoreFileChange(event) {
 }
 
 function createAdjacentMonth(delta) {
-  if (!canEdit()) return
+  if (!canEdit() || !state) return
   const fromKey = state.currentMonth
-  const source = state.months[fromKey]
   const target = shiftMonth(fromKey, delta)
   const copy = () => {
-    const origin = state.months[fromKey] || source
-    if (!origin) return
-    state.months[target] = cloneMonth(origin)
-    state.currentMonth = target
+    if (!copyMonthAdjacent(state, delta, fromKey)) return
     persist()
     render()
   }
@@ -2232,7 +2231,7 @@ function bindEvents() {
     if (!canEdit()) return
     state = restoreOctoberPreservingOthers()
     persistEnabled = storageAvailable()
-    persist()
+    persist({ allMonths: true })
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
