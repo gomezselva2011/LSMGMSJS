@@ -783,7 +783,7 @@ function pieSlicePath(cx, cy, r, startAngle, endAngle) {
   const start = polar(cx, cy, r, endAngle)
   const end = polar(cx, cy, r, startAngle)
   const large = sweep > 180 ? 1 : 0
-  return `M ${cx} ${cy} L ${end.x.toFixed(3)} ${end.y.toFixed(3)} A ${r} ${r} 0 ${large} 0 ${start.x.toFixed(
+  return `M ${cx} ${cy} L ${end.x.toFixed(3)} ${end.y.toFixed(3)} A ${r} ${r} 0 ${large} 1 ${start.x.toFixed(
     3,
   )} ${start.y.toFixed(3)} Z`
 }
