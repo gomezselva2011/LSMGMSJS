@@ -80,7 +80,7 @@ function showToast(message) {
 }
 
 function saveNow() {
-  persistEnabled = storageAvailable()
+  if (!persistEnabled) persistEnabled = storageAvailable()
   const ok = persist()
   if (ok) showToast('Guardado')
 }
