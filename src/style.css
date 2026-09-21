@@ -1512,3 +1512,152 @@ dialog::backdrop {
     transform: none;
   }
 }
+
+.ledger-group {
+  border-top: 1px solid var(--line);
+}
+
+.ledger-group > .ledger-row {
+  border-top: 0;
+}
+
+.ledger-row-main {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    'name amount add actions'
+    'date amount add actions';
+}
+
+.btn-add-sub {
+  grid-area: add;
+  width: var(--touch);
+  height: var(--touch);
+  min-width: var(--touch);
+  min-height: var(--touch);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--pine) 40%, var(--line));
+  background: var(--pine-soft);
+  color: var(--pine);
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  align-self: center;
+  justify-self: end;
+}
+
+.btn-add-sub:hover,
+.ledger-group.is-adding .btn-add-sub {
+  background: var(--pine);
+  color: #f4fbf7;
+  border-color: var(--pine);
+}
+
+.btn-add-sub:focus-visible {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
+}
+
+.ledger-sub {
+  list-style: none;
+  margin: 0 0 0.35rem 0.35rem;
+  padding: 0 0 0.15rem 1rem;
+  border-left: 2px solid var(--line-strong);
+}
+
+.ledger-sub-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.28rem 0;
+  min-height: 1.75rem;
+}
+
+.ledger-sub-name {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  min-width: 0;
+}
+
+.ledger-sub-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.inline-charge {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 6.5rem 4.75rem auto;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0 0 0.7rem 0.35rem;
+  padding: 0.55rem 0.65rem 0.6rem 1rem;
+  border-left: 2px solid var(--pine);
+  background: var(--pine-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.inline-charge-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.inline-charge input,
+.inline-charge select {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-height: var(--touch);
+  padding: 0.55rem 0.75rem;
+  background: #fff;
+  width: 100%;
+}
+
+.inline-charge input:focus,
+.inline-charge select:focus {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
+}
+
+.inline-charge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.inline-charge-actions .btn {
+  min-height: var(--touch);
+}
+
+@media (max-width: 860px) {
+  .ledger-row-main {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'name amount add'
+      'date actions add';
+  }
+
+  .btn-add-sub {
+    justify-self: end;
+    align-self: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .inline-charge {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-charge-actions {
+    width: 100%;
+  }
+
+  .inline-charge-actions .btn {
+    flex: 1;
+  }
+}
