@@ -1783,12 +1783,33 @@ function showFatal(message) {
   if (fatalMessage) fatalMessage.textContent = message
 }
 
+const BOOT_HOLD_MS = 5000
+
+function revealApp() {
+  bootEl.hidden = true
+  fatalEl.hidden = true
+  appEl.hidden = false
+  render()
+}
+
 function showApp() {
   try {
-    bootEl.hidden = true
-    fatalEl.hidden = true
-    appEl.hidden = false
-    render()
+    if (bootEl && !bootEl.hidden) {
+      window.setTimeout(() => {
+        try {
+          revealApp()
+        } catch (error) {
+          console.error(error)
+          showFatal(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo mostrar el presupuesto en este navegador.',
+          )
+        }
+      }, BOOT_HOLD_MS)
+      return
+    }
+    revealApp()
   } catch (error) {
     console.error(error)
     showFatal(
