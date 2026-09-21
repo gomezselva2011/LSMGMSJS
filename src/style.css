@@ -29,6 +29,10 @@ body {
   min-height: 100%;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: var(--font-sans);
   color: var(--ink);
