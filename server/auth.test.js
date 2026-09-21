@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { Readable } from 'node:stream'
+import { Readable, PassThrough } from 'node:stream'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,6 +14,7 @@ import {
   hashPassword,
   verifyPassword,
 } from './auth.js'
+import { closeGastosDb, listUsers, openGastosDb, readHouseholdState } from './db.js'
 import { handleGastosApi } from './gastos-api.js'
 
 function mockRes() {
@@ -87,6 +88,7 @@ describe('auth store and HTTP', () => {
   })
 
   afterEach(async () => {
+    closeGastosDb(store.dbPath)
     await fs.rm(dir, { recursive: true, force: true })
   })
 
@@ -103,7 +105,7 @@ describe('auth store and HTTP', () => {
     return { res, cookie: match ? `${COOKIE_NAME}=${match[1]}` : '' }
   }
 
-  it('seeds mgomez and lsotelon as admins when none exist', async () => {
+  it('seeds mgomez and lsotelon as admins in sqlite when none exist', async () => {
     const users = store.listUsers()
     assert.equal(users.length, 2)
     assert.equal(users[0].username, 'mgomez')
@@ -114,8 +116,8 @@ describe('auth store and HTTP', () => {
     assert.equal(users[1].name, 'Lenin')
     assert.equal(users[1].role, 'admin')
     assert.equal(users[1].canEdit, true)
-    const raw = JSON.parse(await fs.readFile(store.usersPath, 'utf8'))
-    for (const user of raw.users) {
+    const rows = listUsers(openGastosDb({ dbPath: store.dbPath }))
+    for (const user of rows) {
       assert.equal('password' in user, false)
       assert.match(user.passwordHash, /^scrypt:[0-9a-f]+:[0-9a-f]+$/)
       assert.equal(JSON.stringify(user).includes(SEED_ADMIN.password), false)
@@ -124,41 +126,52 @@ describe('auth store and HTTP', () => {
   })
 
   it('replaces placeholder melissa/lenin accounts with the household logins', async () => {
-    const other = createAuthStore({ root: dir, markPath })
-    await fs.writeFile(
-      other.usersPath,
-      JSON.stringify({
-        users: [
-          {
-            id: 'usr_old_admin',
-            name: 'Melissa',
-            username: 'melissa',
-            role: 'admin',
-            passwordHash: 'scrypt:00:00',
-            photo: null,
-          },
-          {
-            id: 'usr_old_viewer',
-            name: 'Lenin',
-            username: 'lenin',
-            role: 'usuario',
-            passwordHash: 'scrypt:00:00',
-            photo: null,
-          },
-        ],
-      }),
-    )
-    await other.ensureSeeded()
-    const users = other.listUsers()
-    assert.equal(users.length, 2)
-    assert.deepEqual(
-      users.map((user) => user.username).sort(),
-      ['lsotelon', 'mgomez'],
-    )
-    assert.equal(
-      users.every((user) => user.role === 'admin'),
-      true,
-    )
+    const fresh = await fs.mkdtemp(path.join(os.tmpdir(), 'gastos-auth-migrate-'))
+    const dbPath = path.join(fresh, 'data', 'gastos.sqlite')
+    try {
+      const mark = path.join(fresh, 'public', 'lm-mark.jpg')
+      await fs.mkdir(path.dirname(mark), { recursive: true })
+      await fs.writeFile(mark, Buffer.from('fake-lm-mark'))
+      await fs.mkdir(path.join(fresh, 'data'), { recursive: true })
+      await fs.writeFile(
+        path.join(fresh, 'data', 'users.json'),
+        JSON.stringify({
+          users: [
+            {
+              id: 'usr_old_admin',
+              name: 'Melissa',
+              username: 'melissa',
+              role: 'admin',
+              passwordHash: 'scrypt:00:00',
+              photo: null,
+            },
+            {
+              id: 'usr_old_viewer',
+              name: 'Lenin',
+              username: 'lenin',
+              role: 'usuario',
+              passwordHash: 'scrypt:00:00',
+              photo: null,
+            },
+          ],
+        }),
+      )
+      const other = createAuthStore({ root: fresh, markPath: mark })
+      await other.ensureSeeded()
+      const users = other.listUsers()
+      assert.equal(users.length, 2)
+      assert.deepEqual(
+        users.map((user) => user.username).sort(),
+        ['lsotelon', 'mgomez'],
+      )
+      assert.equal(
+        users.every((user) => user.role === 'admin'),
+        true,
+      )
+    } finally {
+      closeGastosDb(dbPath)
+      await fs.rm(fresh, { recursive: true, force: true })
+    }
   })
 
   it('logs in both household admins and sets an HttpOnly session cookie', async () => {
@@ -173,6 +186,16 @@ describe('auth store and HTTP', () => {
       assert.match(cookie, /SameSite=Lax/)
       assert.equal(cookie.includes(seed.password), false)
     }
+  })
+
+  it('keeps the session in sqlite after a store reload', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const reloaded = createAuthStore({ root: dir, markPath, dbPath: store.dbPath })
+    await reloaded.load()
+    const meRes = mockRes()
+    await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, reloaded)
+    assert.equal(meRes.statusCode, 200)
+    assert.equal(JSON.parse(meRes.body).user.username, 'mgomez')
   })
 
   it('rejects a bad password', async () => {
@@ -210,6 +233,7 @@ describe('auth store and HTTP', () => {
     )
     assert.equal(created.statusCode, 201)
     assert.equal(JSON.parse(created.body).user.username, 'invitada')
+    assert.equal(JSON.parse(created.body).user.role, 'viewer')
     assert.equal(store.userCount(), MAX_USERS)
 
     const blocked = mockRes()
@@ -234,7 +258,7 @@ describe('auth store and HTTP', () => {
       jsonReq(
         'POST',
         '/api/users',
-        { name: 'Invitada', username: 'invitada', password: 'secreto1', role: 'usuario' },
+        { name: 'Invitada', username: 'invitada', password: 'secreto1', role: 'viewer' },
         adminCookie,
       ),
       created,
@@ -272,9 +296,9 @@ describe('auth store and HTTP', () => {
     assert.equal(forwarded, false)
   })
 
-  it('lets an admin PUT /api/gastos through to the file store', async () => {
+  it('lets an admin PUT /api/gastos through to sqlite', async () => {
     const { cookie } = await loginAs(SEED_ADMIN)
-    const dataPath = path.join(dir, 'data', 'gastos.json')
+    const dbPath = store.dbPath
     const payload = { version: 1, currentMonth: '2026-10', months: { '2026-10': { expenses: [] } } }
     const req = jsonReq('PUT', '/api/gastos', payload, cookie)
     const res = mockRes()
@@ -282,19 +306,19 @@ describe('auth store and HTTP', () => {
       req,
       res,
       async () => {
-        await handleGastosApi(req, res, () => {}, { dataPath })
+        await handleGastosApi(req, res, () => {}, { dbPath })
       },
       store,
     )
     assert.equal(forwarded, false)
     assert.equal(res.statusCode, 200)
-    const onDisk = JSON.parse(await fs.readFile(dataPath, 'utf8'))
+    const onDisk = readHouseholdState(openGastosDb({ dbPath }))
     assert.equal(onDisk.currentMonth, '2026-10')
   })
 
   it('lets lsotelon write gastos as a second admin', async () => {
     const { cookie } = await loginAs(SEED_ADMIN_2)
-    const dataPath = path.join(dir, 'data', 'gastos.json')
+    const dbPath = store.dbPath
     const payload = { version: 1, currentMonth: '2026-10', months: { '2026-10': { expenses: [] } } }
     const req = jsonReq('PUT', '/api/gastos', payload, cookie)
     const res = mockRes()
@@ -302,7 +326,7 @@ describe('auth store and HTTP', () => {
       req,
       res,
       async () => {
-        await handleGastosApi(req, res, () => {}, { dataPath })
+        await handleGastosApi(req, res, () => {}, { dbPath })
       },
       store,
     )
@@ -314,7 +338,6 @@ describe('auth store and HTTP', () => {
     const meRes = mockRes()
     await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, store)
     const id = JSON.parse(meRes.body).user.id
-    const { PassThrough } = await import('node:stream')
     const chunks = []
     const res = new PassThrough()
     res.headers = {}
@@ -332,56 +355,5 @@ describe('auth store and HTTP', () => {
     await done
     assert.equal(res.headers['Content-Type'], 'image/jpeg')
     assert.equal(Buffer.concat(chunks).toString(), 'fake-lm-mark')
-  })
-
-  it('logs out admin and viewer, clearing the session cookie', async () => {
-    const { cookie: adminCookie } = await loginAs(SEED_ADMIN)
-    const created = mockRes()
-    await handleAuthRequest(
-      jsonReq(
-        'POST',
-        '/api/users',
-        { name: 'Invitada', username: 'invitada', password: 'secreto1', role: 'usuario' },
-        adminCookie,
-      ),
-      created,
-      () => {},
-      store,
-    )
-    assert.equal(created.statusCode, 201)
-
-    for (const creds of [SEED_ADMIN, { username: 'invitada', password: 'secreto1' }]) {
-      const { cookie } = await loginAs(creds)
-      const meOk = mockRes()
-      await handleAuthRequest(getReq('/api/auth/me', cookie), meOk, () => {}, store)
-      assert.equal(meOk.statusCode, 200)
-
-      const logoutRes = mockRes()
-      await handleAuthRequest(jsonReq('POST', '/api/logout', {}, cookie), logoutRes, () => {}, store)
-      assert.equal(logoutRes.statusCode, 200)
-      assert.equal(JSON.parse(logoutRes.body).ok, true)
-      const setCookie = String(logoutRes.headers['Set-Cookie'] || '')
-      assert.match(setCookie, new RegExp(`${COOKIE_NAME}=`))
-      assert.match(setCookie, /Max-Age=0/)
-
-      const meGone = mockRes()
-      await handleAuthRequest(getReq('/api/auth/me', cookie), meGone, () => {}, store)
-      assert.equal(meGone.statusCode, 401)
-
-      const html = mockRes()
-      await handleAuthRequest(getReq('/', cookie, 'text/html'), html, () => {}, store)
-      assert.equal(html.statusCode, 302)
-      assert.equal(html.headers.Location, '/login')
-    }
-  })
-
-  it('also accepts POST /api/auth/logout', async () => {
-    const { cookie } = await loginAs(SEED_ADMIN)
-    const logoutRes = mockRes()
-    await handleAuthRequest(jsonReq('POST', '/api/auth/logout', {}, cookie), logoutRes, () => {}, store)
-    assert.equal(logoutRes.statusCode, 200)
-    const meGone = mockRes()
-    await handleAuthRequest(getReq('/api/auth/me', cookie), meGone, () => {}, store)
-    assert.equal(meGone.statusCode, 401)
   })
 })

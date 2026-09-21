@@ -1,8 +1,18 @@
 import { createReadStream } from 'node:fs'
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import {
+  ensureGastosDb,
+  listSessions as listDbSessions,
+  listUsers as listDbUsers,
+  normalizeRole,
+  openGastosDb,
+  replaceSessions,
+  replaceUsers,
+  resolveDbPath,
+} from './db.js'
 import { HOUSEHOLD_SEEDS, PLACEHOLDER_USERNAMES, SEED_ADMIN, SEED_ADMIN_2 } from './household-users.js'
 
 const scrypt = promisify(scryptCb)
@@ -11,12 +21,11 @@ export const COOKIE_NAME = 'gastos_session'
 export const MAX_USERS = 3
 export { SEED_ADMIN, SEED_ADMIN_2 }
 export const ROLE_ADMIN = 'admin'
+export const ROLE_VIEWER = 'viewer'
 export const ROLE_USER = 'usuario'
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000
 const KEYLEN = 64
 const PHOTO_MAX_BYTES = 1_500_000
-
-
 
 const PHOTO_TYPES = {
   'image/jpeg': 'jpg',
@@ -103,7 +112,7 @@ function validName(value) {
 }
 
 function validRole(value) {
-  return value === ROLE_ADMIN || value === ROLE_USER
+  return normalizeRole(value) != null
 }
 
 function publicUser(user) {
@@ -169,48 +178,31 @@ function wantsHtml(req) {
   return accept.includes('text/html')
 }
 
-async function readJsonFile(filePath, fallback) {
-  try {
-    const raw = await readFile(filePath, 'utf8')
-    if (!raw.trim()) return fallback
-    return JSON.parse(raw)
-  } catch (error) {
-    if (error.code === 'ENOENT') return fallback
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath, data) {
-  await mkdir(path.dirname(filePath), { recursive: true })
-  const tmp = `${filePath}.${process.pid}.tmp`
-  await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
-  await rename(tmp, filePath)
-}
-
 export function createAuthStore(options = {}) {
   const root = options.root || process.cwd()
   const dataDir = path.join(root, 'data')
+  const dbPath = resolveDbPath(options)
   const usersPath = options.usersPath || path.join(dataDir, 'users.json')
   const sessionsPath = options.sessionsPath || path.join(dataDir, 'sessions.json')
   const avatarsDir = options.avatarsDir || path.join(dataDir, 'avatars')
   const markPath = options.markPath || path.join(root, 'public', 'lm-mark.jpg')
+  const dbOptions = { ...options, root, dbPath, usersPath, sessionsPath }
 
   let users = []
   let sessions = {}
 
   async function load() {
-    const userFile = await readJsonFile(usersPath, { users: [] })
-    users = Array.isArray(userFile.users) ? userFile.users : []
-    const sessionFile = await readJsonFile(sessionsPath, { sessions: {} })
-    sessions = sessionFile.sessions && typeof sessionFile.sessions === 'object' ? sessionFile.sessions : {}
+    const db = await ensureGastosDb(dbOptions)
+    users = listDbUsers(db)
+    sessions = listDbSessions(db)
   }
 
   async function saveUsers() {
-    await writeJsonFile(usersPath, { users })
+    replaceUsers(openGastosDb(dbOptions), users)
   }
 
   async function saveSessions() {
-    await writeJsonFile(sessionsPath, { sessions })
+    replaceSessions(openGastosDb(dbOptions), sessions)
   }
 
   async function seedUser(seed) {
@@ -220,7 +212,7 @@ export function createAuthStore(options = {}) {
       id: newId('usr'),
       name: seed.name,
       username: seed.username,
-      role: seed.role,
+      role: normalizeRole(seed.role) || ROLE_ADMIN,
       passwordHash: await hashPassword(seed.password),
       photo: null,
     }
@@ -371,7 +363,7 @@ export function createAuthStore(options = {}) {
       id: newId('usr'),
       name: trimmedName,
       username: userKey,
-      role,
+      role: normalizeRole(role),
       passwordHash: await hashPassword(password),
       photo: null,
     }
@@ -439,6 +431,7 @@ export function createAuthStore(options = {}) {
   }
 
   return {
+    dbPath,
     usersPath,
     ensureSeeded,
     load,

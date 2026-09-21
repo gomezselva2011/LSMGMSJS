@@ -1,4 +1,6 @@
 export const ROLE_ADMIN = 'admin'
+export const ROLE_VIEWER = 'viewer'
+export const ROLE_USER = 'usuario'
 
 export const SEED_ADMIN = {
   name: 'Melissa',

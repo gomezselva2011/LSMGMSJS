@@ -1,34 +1,46 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
+import {
+  defaultDbPath,
+  defaultGastosJsonPath,
+  ensureGastosDb,
+  readHouseholdState,
+  resolveDbPath,
+  writeHouseholdState,
+} from './db.js'
 
 export const GASTOS_API_PATH = '/api/gastos'
 const MAX_BYTES = 2_000_000
 
 export function defaultDataPath(root = process.cwd()) {
-  return path.join(root, 'data', 'gastos.json')
+  return defaultGastosJsonPath(root)
 }
+
+export { defaultDbPath, resolveDbPath }
 
 export function isGastosApiUrl(url = '') {
   const pathname = String(url).split('?')[0]
   return pathname === GASTOS_API_PATH || pathname === `${GASTOS_API_PATH}/`
 }
 
-export async function readGastosFile(filePath) {
-  try {
-    const raw = await fs.readFile(filePath, 'utf8')
-    if (!raw.trim()) return {}
-    return JSON.parse(raw)
-  } catch (error) {
-    if (error.code === 'ENOENT') return {}
-    throw error
+function dbOptionsFrom(filePath, options = {}) {
+  if (options.dbPath || options.root || options.dataPath) return options
+  if (!filePath) return options
+  if (String(filePath).endsWith('.sqlite')) return { ...options, dbPath: filePath }
+  return {
+    ...options,
+    dataPath: filePath,
+    dbPath: path.join(path.dirname(filePath), 'gastos.sqlite'),
   }
 }
 
-export async function writeGastosFile(filePath, data) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmp = `${filePath}.${process.pid}.tmp`
-  await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
-  await fs.rename(tmp, filePath)
+export async function readGastosFile(filePath, options = {}) {
+  const db = await ensureGastosDb(dbOptionsFrom(filePath, options))
+  return readHouseholdState(db)
+}
+
+export async function writeGastosFile(filePath, data, options = {}) {
+  const db = await ensureGastosDb(dbOptionsFrom(filePath, options))
+  writeHouseholdState(db, data)
 }
 
 function sendJson(res, status, body) {
@@ -60,11 +72,20 @@ export async function handleGastosApi(req, res, next, options = {}) {
     return false
   }
 
-  const dataPath = options.dataPath || defaultDataPath()
+  const dbOptions = {
+    root: options.root,
+    dbPath: options.dbPath || resolveDbPath(options),
+    dataPath: options.dataPath || defaultDataPath(options.root),
+    gastosJsonPath: options.gastosJsonPath || options.dataPath,
+    usersPath: options.usersPath,
+    sessionsPath: options.sessionsPath,
+  }
 
   try {
+    const db = await ensureGastosDb(dbOptions)
+
     if (req.method === 'GET') {
-      const data = await readGastosFile(dataPath)
+      const data = readHouseholdState(db)
       sendJson(res, 200, data)
       return true
     }
@@ -82,7 +103,7 @@ export async function handleGastosApi(req, res, next, options = {}) {
         sendJson(res, 400, { error: 'El cuerpo tiene que ser un objeto JSON' })
         return true
       }
-      await writeGastosFile(dataPath, parsed)
+      writeHouseholdState(db, parsed)
       sendJson(res, 200, { ok: true })
       return true
     }
@@ -123,10 +144,12 @@ export function gastosApiPlugin(options = {}) {
 
   return {
     name: 'gastos-api',
-    configureServer(server) {
+    async configureServer(server) {
+      await ensureGastosDb(options)
       server.middlewares.use(middleware)
     },
-    configurePreviewServer(server) {
+    async configurePreviewServer(server) {
+      await ensureGastosDb(options)
       server.middlewares.use(middleware)
     },
   }

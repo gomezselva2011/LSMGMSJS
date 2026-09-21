@@ -16,6 +16,8 @@ dist-ssr
 data/gastos.json
 data/users.json
 data/sessions.json
+data/*.sqlite
+data/*.sqlite-*
 data/avatars/*
 !data/avatars/.gitkeep
 data/*.tmp
