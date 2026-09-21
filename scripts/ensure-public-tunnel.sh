@@ -7,6 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 URL_FILE="$ROOT/data/public-url.txt"
 SESSION="gastos-public-tunnel"
+KEEP_WIN="keep"
+KEEPALIVE="$ROOT/scripts/cloudflared-keepalive.sh"
 LOCAL_TARGET="http://127.0.0.1:4731"
 TMUX=(tmux -f /exec-daemon/tmux.portal.conf)
 if [[ ! -f /exec-daemon/tmux.portal.conf ]]; then
@@ -21,13 +23,20 @@ read_saved_url() {
 
 url_from_running_tunnel() {
   "${TMUX[@]}" has-session -t "=$SESSION" 2>/dev/null || return 1
-  "${TMUX[@]}" capture-pane -t "$SESSION" -p -S -200 2>/dev/null \
+  local pane
+  while IFS= read -r pane; do
+    "${TMUX[@]}" capture-pane -t "$pane" -p -S -400 2>/dev/null || true
+  done < <("${TMUX[@]}" list-panes -t "$SESSION" -s -F '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null) \
     | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' \
     | tail -n 1
 }
 
 tunnel_process_up() {
   pgrep -f '[c]loudflared tunnel --url' >/dev/null 2>&1
+}
+
+keepalive_up() {
+  pgrep -f '[c]loudflared-keepalive' >/dev/null 2>&1
 }
 
 url_responds() {
@@ -45,11 +54,33 @@ print_and_save() {
   printf '%s\n' "$url" > "$URL_FILE"
 }
 
+ensure_session() {
+  "${TMUX[@]}" has-session -t "=$SESSION" 2>/dev/null || \
+    "${TMUX[@]}" new-session -d -s "$SESSION" -c "$ROOT" -- "${SHELL:-bash}" -l
+}
+
+# Arranca el waiter/loop en una ventana aparte. NUNCA C-c a la ventana 0
+# si ahí vive el túnel actual (perderíamos el hostname).
+ensure_keepalive() {
+  ensure_session
+  if ! "${TMUX[@]}" list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$KEEP_WIN"; then
+    "${TMUX[@]}" new-window -t "$SESSION" -n "$KEEP_WIN" -c "$ROOT" -- "${SHELL:-bash}" -l
+    sleep 0.8
+  fi
+  if keepalive_up; then
+    return 0
+  fi
+  "${TMUX[@]}" send-keys -t "$SESSION:$KEEP_WIN" C-c 2>/dev/null || true
+  sleep 0.3
+  "${TMUX[@]}" send-keys -t "$SESSION:$KEEP_WIN" "bash '$KEEPALIVE'" C-m
+}
+
 SAVED="$(read_saved_url || true)"
 LIVE="$(url_from_running_tunnel || true)"
 
 if tunnel_process_up; then
   # Túnel ya corre: reusar. No relanzar cloudflared.
+  ensure_keepalive
   CHOSEN="${LIVE:-$SAVED}"
   if [[ -z "$CHOSEN" ]]; then
     echo "Túnel cloudflared ya está en marcha; no se lanza otro." >&2
@@ -77,15 +108,7 @@ if ! command -v cloudflared >/dev/null 2>&1 && [[ ! -x /tmp/cloudflared ]]; then
   exit 1
 fi
 
-CLOUDFLARED="$(command -v cloudflared 2>/dev/null || echo /tmp/cloudflared)"
-
-"${TMUX[@]}" has-session -t "=$SESSION" 2>/dev/null || \
-  "${TMUX[@]}" new-session -d -s "$SESSION" -c "$ROOT" -- "${SHELL:-bash}" -l
-
-"${TMUX[@]}" send-keys -t "$SESSION:0.0" C-c 2>/dev/null || true
-sleep 0.3
-"${TMUX[@]}" send-keys -t "$SESSION:0.0" \
-  "$CLOUDFLARED tunnel --url $LOCAL_TARGET --no-autoupdate" C-m
+ensure_keepalive
 
 for _ in $(seq 1 30); do
   sleep 1
