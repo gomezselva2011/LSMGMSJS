@@ -1,4 +1,12 @@
-import { STORAGE_KEY, SEEDED_MONTH, createOctoberSeed, createEmptyMonth } from './seed.js'
+import {
+  STORAGE_KEY,
+  SEEDED_MONTH,
+  CATEGORY_OTROS,
+  CATEGORY_PRADERAS,
+  CATEGORY_SAN_ANDRES,
+  createOctoberSeed,
+  createEmptyMonth,
+} from './seed.js'
 import { newId } from './format.js'
 import {
   DEFAULT_EXCHANGE_RATE,
@@ -85,6 +93,26 @@ export function normalizeExpense(raw) {
   return raw
 }
 
+export const LAYOUT_HALF = 'half'
+export const LAYOUT_FULL = 'full'
+
+export function normalizeLayout(value) {
+  return value === LAYOUT_HALF ? LAYOUT_HALF : value === LAYOUT_FULL ? LAYOUT_FULL : null
+}
+
+export function inferredCategoryLayout(category, index, total) {
+  if (category?.id === CATEGORY_SAN_ANDRES || category?.id === CATEGORY_PRADERAS) return LAYOUT_HALF
+  if (category?.id === CATEGORY_OTROS) return LAYOUT_FULL
+  if (total % 2 === 1 && index === total - 1) return LAYOUT_FULL
+  return LAYOUT_HALF
+}
+
+export function normalizeCategory(raw, index = 0, total = 1) {
+  if (!raw || typeof raw !== 'object') return raw
+  raw.layout = normalizeLayout(raw.layout) ?? inferredCategoryLayout(raw, index, total)
+  return raw
+}
+
 export function normalizeMonth(month) {
   if (!month || typeof month !== 'object') return createEmptyMonth()
   if (!Array.isArray(month.incomes)) month.incomes = []
@@ -94,6 +122,9 @@ export function normalizeMonth(month) {
     month.exchangeRate = DEFAULT_EXCHANGE_RATE
   }
   month.incomes.forEach(normalizeIncome)
+  month.categories.forEach((category, index) =>
+    normalizeCategory(category, index, month.categories.length),
+  )
   month.expenses.forEach(normalizeExpense)
   return month
 }

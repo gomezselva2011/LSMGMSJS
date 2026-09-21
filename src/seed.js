@@ -28,9 +28,9 @@ export function createOctoberSeed() {
       },
     ],
     categories: [
-      { id: CATEGORY_SAN_ANDRES, name: 'Casa San Andrés' },
-      { id: CATEGORY_PRADERAS, name: 'Casa Praderas de Sandino' },
-      { id: CATEGORY_OTROS, name: 'Otros gastos' },
+      { id: CATEGORY_SAN_ANDRES, name: 'Casa San Andrés', layout: 'half' },
+      { id: CATEGORY_PRADERAS, name: 'Casa Praderas de Sandino', layout: 'half' },
+      { id: CATEGORY_OTROS, name: 'Otros gastos', layout: 'full' },
     ],
     expenses: [
       { id: 'exp-sa-luz', name: 'Luz', amount: 0, categoryId: CATEGORY_SAN_ANDRES, dueDay: 15 },
@@ -85,9 +85,9 @@ export function createEmptyMonth() {
     exchangeRate: DEFAULT_EXCHANGE_RATE,
     incomes: [],
     categories: [
-      { id: CATEGORY_SAN_ANDRES, name: 'Casa San Andrés' },
-      { id: CATEGORY_PRADERAS, name: 'Casa Praderas de Sandino' },
-      { id: CATEGORY_OTROS, name: 'Otros gastos' },
+      { id: CATEGORY_SAN_ANDRES, name: 'Casa San Andrés', layout: 'half' },
+      { id: CATEGORY_PRADERAS, name: 'Casa Praderas de Sandino', layout: 'half' },
+      { id: CATEGORY_OTROS, name: 'Otros gastos', layout: 'full' },
     ],
     expenses: [],
   }

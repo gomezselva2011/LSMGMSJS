@@ -5,6 +5,8 @@ import {
   createInitialState,
   detailsAreEmpty,
   emptyDetails,
+  LAYOUT_FULL,
+  LAYOUT_HALF,
   loadState,
   looksLikeCardName,
   normalizeDetails,
@@ -64,10 +66,13 @@ let chargeEditId = null
 let detailsExpenseId = null
 let moveExpenseId = null
 let dragExpenseId = null
+let dragCategoryId = null
+let categoryDropPlace = null
 let longPressTimer = 0
 let longPressStart = null
 const expandedSubgastoIds = new Set()
 const DRAG_MIME = 'application/x-gastos-expense'
+const CATEGORY_MIME = 'application/x-gastos-category'
 
 function currentMonth() {
   return state.months[state.currentMonth]
@@ -419,11 +424,12 @@ function renderCategories() {
     return
   }
 
-  const cards = month.categories.map((category, index) => {
+  const cards = month.categories.map((category) => {
     const expenses = month.expenses
       .filter((item) => item.categoryId === category.id)
       .sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99) || a.name.localeCompare(b.name, 'es'))
-    const wide = month.categories.length % 2 === 1 && index === month.categories.length - 1
+    const layout = category.layout === LAYOUT_HALF ? LAYOUT_HALF : LAYOUT_FULL
+    const isFull = layout === LAYOUT_FULL
     const totalUsd = categoryTotalUsd(month, category.id)
     const totalLabel = totalUsd == null ? '—' : formatMoney(totalUsd, 'USD')
     const body =
@@ -439,16 +445,45 @@ function renderCategories() {
         `
 
     return `
-      <article class="category-card${wide ? ' wide' : ''}" data-category-id="${category.id}">
+      <article class="category-card ${isFull ? 'wide is-full' : 'is-half'}" data-category-id="${category.id}" data-layout="${layout}">
         <div class="card-head">
-          <div>
-            <h3>${escapeHtml(category.name)}</h3>
-            <strong class="category-total">${totalLabel}</strong>
+          <div
+            class="category-drag"
+            draggable="true"
+            data-category-id="${category.id}"
+            title="Arrastra para reordenar"
+            aria-label="Arrastrar ${escapeHtml(category.name)} para reordenar"
+          >
+            <span class="category-handle" aria-hidden="true"></span>
+            <div>
+              <h3>${escapeHtml(category.name)}</h3>
+              <strong class="category-total">${totalLabel}</strong>
+            </div>
           </div>
-          <div class="row-actions">
-            <button type="button" class="btn btn-row" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
-            <button type="button" class="btn btn-row" data-action="edit-category" data-id="${category.id}">Renombrar</button>
-            <button type="button" class="btn btn-row" data-action="delete-category" data-id="${category.id}">Eliminar</button>
+          <div class="card-head-tools">
+            <div class="layout-toggle" role="group" aria-label="Ancho de ${escapeHtml(category.name)}">
+              <button
+                type="button"
+                class="btn btn-layout"
+                data-action="set-layout"
+                data-id="${category.id}"
+                data-layout="${LAYOUT_HALF}"
+                aria-pressed="${isFull ? 'false' : 'true'}"
+              >Media fila</button>
+              <button
+                type="button"
+                class="btn btn-layout"
+                data-action="set-layout"
+                data-id="${category.id}"
+                data-layout="${LAYOUT_FULL}"
+                aria-pressed="${isFull ? 'true' : 'false'}"
+              >Fila completa</button>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-row" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
+              <button type="button" class="btn btn-row" data-action="edit-category" data-id="${category.id}">Renombrar</button>
+              <button type="button" class="btn btn-row" data-action="delete-category" data-id="${category.id}">Eliminar</button>
+            </div>
           </div>
         </div>
         ${body}
@@ -837,7 +872,7 @@ function onSubmitForm(event) {
           item.id === formContext.item.id ? { ...item, name } : item,
         )
       } else {
-        month.categories.push({ id: newId('cat'), name })
+        month.categories.push({ id: newId('cat'), name, layout: LAYOUT_FULL })
       }
     }
   } catch (error) {
@@ -1181,15 +1216,60 @@ function draggedExpense() {
   return currentMonth().expenses.find((entry) => entry.id === dragExpenseId) ?? null
 }
 
+function draggedCategory() {
+  if (!dragCategoryId) return null
+  return currentMonth().categories.find((entry) => entry.id === dragCategoryId) ?? null
+}
+
+function isCategoryDrag(event) {
+  const types = Array.from(event.dataTransfer?.types ?? [])
+  return Boolean(dragCategoryId) || types.includes(CATEGORY_MIME)
+}
+
+function isExpenseDrag(event) {
+  const types = Array.from(event.dataTransfer?.types ?? [])
+  return Boolean(dragExpenseId) || types.includes(DRAG_MIME)
+}
+
+function gridColumnCount() {
+  const value = getComputedStyle(categoryGridEl).gridTemplateColumns
+  return value.split(/\s+/).filter(Boolean).length
+}
+
+function dropPlacement(card, clientX, clientY) {
+  const rect = card.getBoundingClientRect()
+  if (gridColumnCount() < 2) {
+    return clientY > rect.top + rect.height / 2 ? 'after' : 'before'
+  }
+  return clientX > rect.left + rect.width / 2 ? 'after' : 'before'
+}
+
+function placementHint(place, source, target) {
+  if (
+    source?.layout === LAYOUT_HALF &&
+    target?.layout === LAYOUT_HALF &&
+    source.id !== target.id
+  ) {
+    return place === 'after' ? 'Juntar a la derecha' : 'Juntar a la izquierda'
+  }
+  return place === 'after' ? 'Soltar después' : 'Soltar antes'
+}
+
 function clearDropTargets() {
-  categoryGridEl?.querySelectorAll('.category-card.is-drop-target, .category-card.is-drop-invalid').forEach((card) => {
-    card.classList.remove('is-drop-target', 'is-drop-invalid')
+  categoryGridEl?.querySelectorAll('.category-card').forEach((card) => {
+    card.classList.remove(
+      'is-drop-target',
+      'is-drop-invalid',
+      'is-drop-before',
+      'is-drop-after',
+    )
     const hint = card.querySelector('.drop-hint')
     if (hint) {
       hint.hidden = true
       hint.textContent = 'Soltar aquí'
     }
   })
+  categoryDropPlace = null
 }
 
 function restoreRowDraggable() {
@@ -1198,14 +1278,35 @@ function restoreRowDraggable() {
   })
 }
 
-function endDrag() {
+function restoreCategoryDraggable() {
+  categoryGridEl?.querySelectorAll('.category-drag').forEach((handle) => {
+    handle.setAttribute('draggable', 'true')
+  })
+}
+
+function endExpenseDrag() {
   dragExpenseId = null
   categoryGridEl?.classList.remove('is-reclassifying')
   categoryGridEl?.querySelectorAll('.ledger-drag.is-dragging').forEach((row) => {
     row.classList.remove('is-dragging')
   })
+}
+
+function endCategoryDrag() {
+  dragCategoryId = null
+  categoryDropPlace = null
+  categoryGridEl?.classList.remove('is-reordering')
+  categoryGridEl?.querySelectorAll('.category-card.is-dragging, .category-drag.is-dragging').forEach((el) => {
+    el.classList.remove('is-dragging')
+  })
+}
+
+function endDrag() {
+  endExpenseDrag()
+  endCategoryDrag()
   clearDropTargets()
   restoreRowDraggable()
+  restoreCategoryDraggable()
 }
 
 function setDropTarget(card, valid) {
@@ -1215,17 +1316,74 @@ function setDropTarget(card, valid) {
   }
   categoryGridEl.querySelectorAll('.category-card').forEach((other) => {
     if (other === card) return
-    other.classList.remove('is-drop-target', 'is-drop-invalid')
+    other.classList.remove('is-drop-target', 'is-drop-invalid', 'is-drop-before', 'is-drop-after')
     const otherHint = other.querySelector('.drop-hint')
     if (otherHint) otherHint.hidden = true
   })
   card.classList.add('is-drop-target')
   card.classList.toggle('is-drop-invalid', !valid)
+  card.classList.remove('is-drop-before', 'is-drop-after')
   const hint = card.querySelector('.drop-hint')
   if (hint) {
     hint.textContent = valid ? 'Soltar aquí' : 'Ya está en esta categoría'
     hint.hidden = false
   }
+}
+
+function setReorderTarget(card, place, source, target) {
+  if (!card) {
+    clearDropTargets()
+    return
+  }
+  categoryGridEl.querySelectorAll('.category-card').forEach((other) => {
+    if (other === card) return
+    other.classList.remove('is-drop-target', 'is-drop-invalid', 'is-drop-before', 'is-drop-after')
+    const otherHint = other.querySelector('.drop-hint')
+    if (otherHint) otherHint.hidden = true
+  })
+  categoryDropPlace = place
+  card.classList.add('is-drop-target')
+  card.classList.toggle('is-drop-before', place === 'before')
+  card.classList.toggle('is-drop-after', place === 'after')
+  card.classList.remove('is-drop-invalid')
+  const hint = card.querySelector('.drop-hint')
+  if (hint) {
+    hint.textContent = placementHint(place, source, target)
+    hint.hidden = false
+  }
+}
+
+function setCategoryLayout(id, layout) {
+  const month = currentMonth()
+  const category = month.categories.find((entry) => entry.id === id)
+  const next = layout === LAYOUT_HALF ? LAYOUT_HALF : LAYOUT_FULL
+  if (!category || category.layout === next) return
+  category.layout = next
+  persist()
+  render()
+  showToast(next === LAYOUT_HALF ? `${category.name}: media fila` : `${category.name}: fila completa`)
+}
+
+function reorderCategory(sourceId, targetId, place) {
+  const month = currentMonth()
+  const list = month.categories
+  const from = list.findIndex((entry) => entry.id === sourceId)
+  const to = list.findIndex((entry) => entry.id === targetId)
+  if (from < 0 || to < 0 || !targetId) return false
+  const next = [...list]
+  const [moved] = next.splice(from, 1)
+  let insertAt = next.findIndex((entry) => entry.id === targetId)
+  if (insertAt < 0) return false
+  if (place === 'after') insertAt += 1
+  next.splice(insertAt, 0, moved)
+  const unchanged = next.every((entry, index) => entry.id === list[index].id)
+  if (unchanged) return false
+  month.categories = next
+  persist()
+  render()
+  showToast('Orden de categorías actualizado')
+  announceDnd(`Categorías: ${next.map((entry) => entry.name).join(', ')}.`)
+  return true
 }
 
 function moveExpenseToCategory(expenseId, categoryId) {
@@ -1303,6 +1461,18 @@ function onExpensePointerMove(event) {
   if (dx * dx + dy * dy > 100) cancelLongPress()
 }
 
+function onGridPointerDown(event) {
+  const card = event.target.closest('.category-card')
+  const handle = card?.querySelector('.category-drag')
+  if (handle) {
+    const onControls = Boolean(
+      event.target.closest('.row-actions, .layout-toggle, .btn, .ledger-drag, .ledger, a, input, select, textarea'),
+    )
+    handle.setAttribute('draggable', onControls ? 'false' : 'true')
+  }
+  onExpensePointerDown(event)
+}
+
 function onExpenseDragStart(event) {
   const row = event.target.closest('.ledger-drag')
   if (
@@ -1333,14 +1503,71 @@ function onExpenseDragStart(event) {
   announceDnd(`Arrastrando «${item.name}». Suelta en otra categoría para reclasificarla.`)
 }
 
-function onExpenseDragEnd() {
+function onCategoryReorderStart(event) {
+  const handle = event.target.closest('.category-drag')
+  if (!handle || handle.getAttribute('draggable') === 'false') {
+    event.preventDefault()
+    return
+  }
+  const id = handle.dataset.categoryId
+  const category = currentMonth().categories.find((entry) => entry.id === id)
+  if (!category) {
+    event.preventDefault()
+    return
+  }
+  cancelLongPress()
+  dragCategoryId = id
+  try {
+    event.dataTransfer.setData(CATEGORY_MIME, id)
+    event.dataTransfer.setData('text/plain', id)
+  } catch {
+    // Some browsers only allow text/plain.
+  }
+  event.dataTransfer.effectAllowed = 'move'
+  handle.classList.add('is-dragging')
+  handle.closest('.category-card')?.classList.add('is-dragging')
+  categoryGridEl.classList.add('is-reordering')
+  const card = handle.closest('.category-card')
+  if (card && event.dataTransfer.setDragImage) {
+    try {
+      event.dataTransfer.setDragImage(card, 28, 28)
+    } catch {
+      // Keep the default drag image.
+    }
+  }
+  announceDnd(`Arrastrando «${category.name}». Suelta junto a otra categoría para reordenar.`)
+}
+
+function onGridDragStart(event) {
+  if (event.target.closest('.category-drag') && !event.target.closest('.ledger-drag')) {
+    onCategoryReorderStart(event)
+    return
+  }
+  onExpenseDragStart(event)
+}
+
+function onGridDragEnd() {
   endDrag()
+}
+
+function onCategoryReorderOver(event) {
+  const card = event.target.closest?.('.category-card')
+  if (!card || !categoryGridEl.contains(card)) {
+    clearDropTargets()
+    return
+  }
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+  const source = draggedCategory()
+  const target = currentMonth().categories.find((entry) => entry.id === card.dataset.categoryId)
+  const place = dropPlacement(card, event.clientX, event.clientY)
+  setReorderTarget(card, place, source, target)
 }
 
 function onCategoryDragOver(event) {
   const types = Array.from(event.dataTransfer?.types ?? [])
-  const isExpenseDrag = Boolean(dragExpenseId) || types.includes(DRAG_MIME)
-  if (!isExpenseDrag) return
+  const draggingExpense = Boolean(dragExpenseId) || types.includes(DRAG_MIME)
+  if (!draggingExpense) return
   const card = event.target.closest?.('.category-card')
   if (!card || !categoryGridEl.contains(card)) {
     clearDropTargets()
@@ -1351,6 +1578,31 @@ function onCategoryDragOver(event) {
   const item = draggedExpense()
   const valid = Boolean(item && item.categoryId !== card.dataset.categoryId)
   setDropTarget(card, valid)
+}
+
+function onGridDragOver(event) {
+  if (dragExpenseId || (isExpenseDrag(event) && !dragCategoryId)) {
+    onCategoryDragOver(event)
+    return
+  }
+  if (dragCategoryId || isCategoryDrag(event)) {
+    onCategoryReorderOver(event)
+  }
+}
+
+function onCategoryReorderDrop(event) {
+  const card = event.target.closest?.('.category-card')
+  if (!card || !categoryGridEl.contains(card)) return
+  event.preventDefault()
+  const sourceId =
+    dragCategoryId ||
+    event.dataTransfer?.getData(CATEGORY_MIME) ||
+    event.dataTransfer?.getData('text/plain')
+  const targetId = card.dataset.categoryId
+  const place = categoryDropPlace || dropPlacement(card, event.clientX, event.clientY)
+  endDrag()
+  if (!sourceId || !targetId) return
+  reorderCategory(sourceId, targetId, place)
 }
 
 function onCategoryDrop(event) {
@@ -1365,6 +1617,23 @@ function onCategoryDrop(event) {
   endDrag()
   if (!expenseId || !categoryId) return
   moveExpenseToCategory(expenseId, categoryId)
+}
+
+function onGridDrop(event) {
+  if (dragCategoryId && !dragExpenseId) {
+    onCategoryReorderDrop(event)
+    return
+  }
+  if (dragExpenseId) {
+    onCategoryDrop(event)
+    return
+  }
+  const types = Array.from(event.dataTransfer?.types ?? [])
+  if (types.includes(CATEGORY_MIME)) {
+    onCategoryReorderDrop(event)
+    return
+  }
+  onCategoryDrop(event)
 }
 
 function onMoveDialogClick(event) {
@@ -1416,6 +1685,8 @@ function onAppClick(event) {
     openForm({ type: 'category', item: month.categories.find((item) => item.id === id) })
   } else if (action === 'delete-category') {
     deleteCategory(id)
+  } else if (action === 'set-layout') {
+    setCategoryLayout(id, button.dataset.layout)
   } else if (action === 'open-month') {
     goToMonth(button.dataset.month)
   } else if (action === 'show-view') {
@@ -1462,22 +1733,24 @@ function bindEvents() {
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
-  categoryGridEl.addEventListener('dragstart', onExpenseDragStart)
-  categoryGridEl.addEventListener('dragend', onExpenseDragEnd)
-  categoryGridEl.addEventListener('dragover', onCategoryDragOver)
+  categoryGridEl.addEventListener('dragstart', onGridDragStart)
+  categoryGridEl.addEventListener('dragend', onGridDragEnd)
+  categoryGridEl.addEventListener('dragover', onGridDragOver)
   categoryGridEl.addEventListener('dragleave', (event) => {
     if (!categoryGridEl.contains(event.relatedTarget)) clearDropTargets()
   })
-  categoryGridEl.addEventListener('drop', onCategoryDrop)
-  categoryGridEl.addEventListener('pointerdown', onExpensePointerDown)
+  categoryGridEl.addEventListener('drop', onGridDrop)
+  categoryGridEl.addEventListener('pointerdown', onGridPointerDown)
   categoryGridEl.addEventListener('pointermove', onExpensePointerMove)
   categoryGridEl.addEventListener('pointerup', () => {
     cancelLongPress()
     restoreRowDraggable()
+    restoreCategoryDraggable()
   })
   categoryGridEl.addEventListener('pointercancel', () => {
     cancelLongPress()
     restoreRowDraggable()
+    restoreCategoryDraggable()
   })
   itemForm.addEventListener('submit', onSubmitForm)
   document.querySelector('#form-cancel').addEventListener('click', () => formDialog.close())
