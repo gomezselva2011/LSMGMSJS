@@ -10,12 +10,20 @@ import {
   SEED_ADMIN,
   SEED_ADMIN_2,
   createAuthStore,
+  createLoginRateLimiter,
   handleAuthRequest,
   hashPassword,
+  isSensitivePath,
+  sniffImageType,
   verifyPassword,
 } from './auth.js'
 import { closeGastosDb, listUsers, openGastosDb, readHouseholdState } from './db.js'
 import { handleGastosApi } from './gastos-api.js'
+import {
+  DEV_DUMMY_ADMIN_PASSWORD,
+  DEV_DUMMY_ADMIN2_PASSWORD,
+  getHouseholdSeeds,
+} from './household-users.js'
 
 function mockRes() {
   return {
@@ -87,6 +95,54 @@ describe('password hashing', () => {
     assert.equal(stored.includes(secret), false)
     assert.equal(await verifyPassword(secret, stored), true)
     assert.equal(await verifyPassword('wrong', stored), false)
+    const again = await hashPassword(secret)
+    assert.notEqual(again, stored)
+  })
+})
+
+describe('household seed passwords', () => {
+  it('uses dummy local passwords unless env vars are set', () => {
+    const local = getHouseholdSeeds({})
+    assert.equal(local[0].password, DEV_DUMMY_ADMIN_PASSWORD)
+    assert.equal(local[1].password, DEV_DUMMY_ADMIN2_PASSWORD)
+    assert.match(local[0].password, /^dev-only-local-/)
+    assert.match(local[1].password, /^dev-only-local-/)
+    assert.equal(local[0].password.includes('Noviembre'), false)
+    assert.equal(local[1].password.includes('Caregato'), false)
+    const fromEnv = getHouseholdSeeds({
+      GASTOS_ADMIN_PASSWORD: 'from-env-one',
+      GASTOS_ADMIN2_PASSWORD: 'from-env-two',
+    })
+    assert.equal(fromEnv[0].password, 'from-env-one')
+    assert.equal(fromEnv[1].password, 'from-env-two')
+  })
+})
+
+describe('sensitive paths', () => {
+  it('blocks data files, sqlite, and server source', () => {
+    assert.equal(isSensitivePath('/data/gastos.json'), true)
+    assert.equal(isSensitivePath('/data/gastos.sqlite'), true)
+    assert.equal(isSensitivePath('/data/users.json'), true)
+    assert.equal(isSensitivePath('/server/household-users.js'), true)
+    assert.equal(isSensitivePath('/scripts/cloudflared-keepalive.sh'), true)
+    assert.equal(isSensitivePath('/@fs/workspace/server/auth.js'), true)
+    assert.equal(isSensitivePath('/@fs/workspace/data/gastos.json'), true)
+    assert.equal(isSensitivePath('/login'), false)
+    assert.equal(isSensitivePath('/api/gastos'), false)
+    assert.equal(isSensitivePath('/src/login.js'), false)
+  })
+})
+
+describe('image sniffing', () => {
+  it('accepts jpeg/png/webp magic and rejects svg/html', () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0])
+    const webp = Buffer.from('RIFF....WEBP', 'ascii')
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    assert.equal(sniffImageType(jpeg), 'jpg')
+    assert.equal(sniffImageType(png), 'png')
+    assert.equal(sniffImageType(webp), 'webp')
+    assert.equal(sniffImageType(svg), null)
   })
 })
 
@@ -201,8 +257,21 @@ describe('auth store and HTTP', () => {
       const cookie = String(res.headers['Set-Cookie'] || '')
       assert.match(cookie, /HttpOnly/)
       assert.match(cookie, /SameSite=Lax/)
+      assert.equal(/Secure/i.test(cookie), false)
       assert.equal(cookie.includes(seed.password), false)
     }
+  })
+
+  it('sets Secure on the session cookie behind HTTPS', async () => {
+    const req = jsonReq('POST', '/api/auth/login', {
+      username: SEED_ADMIN.username,
+      password: SEED_ADMIN.password,
+    })
+    req.headers['x-forwarded-proto'] = 'https'
+    const res = mockRes()
+    await handleAuthRequest(req, res, () => {}, store)
+    assert.equal(res.statusCode, 200)
+    assert.match(String(res.headers['Set-Cookie'] || ''), /Secure/)
   })
 
   it('keeps the session in sqlite after a store reload', async () => {
@@ -215,7 +284,7 @@ describe('auth store and HTTP', () => {
     assert.equal(JSON.parse(meRes.body).user.username, 'mgomez')
   })
 
-  it('rejects a bad password', async () => {
+  it('rejects a bad password with a generic error', async () => {
     const res = mockRes()
     await handleAuthRequest(
       jsonReq('POST', '/api/auth/login', { username: 'mgomez', password: 'nope' }),
@@ -224,6 +293,19 @@ describe('auth store and HTTP', () => {
       store,
     )
     assert.equal(res.statusCode, 401)
+    assert.equal(JSON.parse(res.body).error, 'Usuario o contraseña incorrectos.')
+  })
+
+  it('uses the same login error when the username does not exist', async () => {
+    const res = mockRes()
+    await handleAuthRequest(
+      jsonReq('POST', '/api/auth/login', { username: 'nadie_aqui', password: 'nope' }),
+      res,
+      () => {},
+      store,
+    )
+    assert.equal(res.statusCode, 401)
+    assert.equal(JSON.parse(res.body).error, 'Usuario o contraseña incorrectos.')
   })
 
   it('redirects anonymous HTML to /login', async () => {
@@ -359,10 +441,21 @@ describe('auth store and HTTP', () => {
     await handleAuthRequest(getReq(`/api/users/${id}/photo`, cookie), stream.res, () => {}, store)
     await stream.done
     assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
+    assert.equal(stream.res.headers['X-Content-Type-Options'], 'nosniff')
     assert.equal(stream.body().toString(), 'fake-lm-mark')
   })
 
-  it('serves the mark for a missing saved photo file, even without a session cookie', async () => {
+  it('requires a session to fetch a profile photo', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const meRes = mockRes()
+    await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, store)
+    const id = JSON.parse(meRes.body).user.id
+    const res = mockRes()
+    await handleAuthRequest(getReq(`/api/users/${id}/photo`), res, () => {}, store)
+    assert.equal(res.statusCode, 401)
+  })
+
+  it('serves the mark for a missing saved photo file when logged in', async () => {
     const { cookie } = await loginAs(SEED_ADMIN)
     const meRes = mockRes()
     await handleAuthRequest(getReq('/api/auth/me', cookie), meRes, () => {}, store)
@@ -370,19 +463,96 @@ describe('auth store and HTTP', () => {
     const row = store.findUser(id)
     row.photo = 'missing-avatar.jpg'
     const stream = collectStreamRes()
-    await handleAuthRequest(getReq(`/api/users/${id}/photo`), stream.res, () => {}, store)
+    await handleAuthRequest(getReq(`/api/users/${id}/photo`, cookie), stream.res, () => {}, store)
     await stream.done
     assert.equal(stream.res.statusCode, 200)
     assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
     assert.equal(stream.body().toString(), 'fake-lm-mark')
   })
 
-  it('never returns JSON for an unknown profile photo', async () => {
+  it('never returns JSON for an unknown profile photo when logged in', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
     const stream = collectStreamRes()
-    await handleAuthRequest(getReq('/api/users/usr_missing/photo'), stream.res, () => {}, store)
+    await handleAuthRequest(getReq('/api/users/usr_missing/photo', cookie), stream.res, () => {}, store)
     await stream.done
     assert.equal(stream.res.statusCode, 200)
     assert.equal(stream.res.headers['Content-Type'], 'image/jpeg')
     assert.equal(stream.body().toString(), 'fake-lm-mark')
+  })
+
+  it('rejects an SVG pretending to be a JPEG photo', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    const req = Readable.from([svg])
+    req.method = 'POST'
+    req.url = '/api/me/photo'
+    req.headers = { 'content-type': 'image/jpeg', cookie }
+    const res = mockRes()
+    await handleAuthRequest(req, res, () => {}, store)
+    assert.equal(res.statusCode, 400)
+  })
+
+  it('rejects unauthenticated writes to the budget', async () => {
+    const writeRes = mockRes()
+    let forwarded = false
+    await handleAuthRequest(
+      jsonReq('PUT', '/api/gastos', { months: {} }),
+      writeRes,
+      () => {
+        forwarded = true
+      },
+      store,
+    )
+    assert.equal(writeRes.statusCode, 401)
+    assert.equal(forwarded, false)
+  })
+
+  it('deletes the session row on logout', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const logout = mockRes()
+    await handleAuthRequest(jsonReq('POST', '/api/logout', {}, cookie), logout, () => {}, store)
+    assert.equal(logout.statusCode, 200)
+    const me = mockRes()
+    await handleAuthRequest(getReq('/api/auth/me', cookie), me, () => {}, store)
+    assert.equal(me.statusCode, 401)
+  })
+
+  it('blocks data and server files even with a session', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    for (const url of [
+      '/data/gastos.json',
+      '/data/gastos.sqlite',
+      '/data/users.json',
+      '/server/household-users.js',
+      '/@fs/workspace/server/auth.js',
+      '/@fs/workspace/data/gastos.json',
+    ]) {
+      const res = mockRes()
+      await handleAuthRequest(getReq(url, cookie), res, () => {}, store)
+      assert.equal(res.statusCode, 404, url)
+    }
+  })
+
+  it('rate-limits repeated failed logins for the same user', async () => {
+    const tight = createAuthStore({
+      root: dir,
+      markPath,
+      dbPath: store.dbPath,
+      loginLimiter: createLoginRateLimiter({ windowMs: 60_000, maxPerUser: 2, maxPerIp: 20 }),
+    })
+    await tight.load()
+    const fail = async () => {
+      const res = mockRes()
+      await handleAuthRequest(
+        jsonReq('POST', '/api/auth/login', { username: 'mgomez', password: 'nope' }),
+        res,
+        () => {},
+        tight,
+      )
+      return res.statusCode
+    }
+    assert.equal(await fail(), 401)
+    assert.equal(await fail(), 401)
+    assert.equal(await fail(), 429)
   })
 })

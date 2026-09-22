@@ -12,22 +12,23 @@ Muertas (no las abras): `conventions-youth-compilation-mind.trycloudflare.com` y
 
 Esa dirección está en `data/public-url.txt`. El túnel vive en tmux `gastos-public-tunnel` (ventana `keep`, script `scripts/cloudflared-keepalive.sh`) y apunta a Vite en `127.0.0.1:4731`, con **HTTP/2** y rearranque automático si el proceso muere o Cloudflare responde `Tunnel not found`. Un *quick tunnel* **cambia de hostname** cuando Cloudflare lo da de baja: no hay cuenta de Cloudflare en esta máquina, así que no se puede fijar un dominio estable (túnel con nombre). `npm run public-url` reusa el túnel vivo y no abre un segundo.
 
-Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt**, nunca en texto plano.
+Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt** (sal distinta por usuario), nunca en texto plano.
 
-## Perfiles de arranque (temporales)
+## Perfiles de arranque
 
-Cambia estas contraseñas después del primer acceso.
+Los usuarios semilla son `mgomez` (Melissa) y `lsotelon` (Lenin), ambos admin.
 
-| Nombre | Usuario | Contraseña temporal | Rol |
-| --- | --- | --- | --- |
-| Melissa | `mgomez` | `Noviembre041980!` | admin (edita todo) |
-| Lenin | `lsotelon` | `Caregatotriste1!` | admin (edita todo) |
+Las contraseñas **no van en el repositorio**. Al crear una base vacía:
 
-Un admin puede crear un tercer perfil de **solo lectura** (`viewer` / usuario). Ese perfil ve Presupuesto y Analítica, pero no puede añadir, editar, arrastrar, guardar ni restaurar.
+1. Define `GASTOS_ADMIN_PASSWORD` (Melissa / `mgomez`) y `GASTOS_ADMIN2_PASSWORD` (Lenin / `lsotelon`), o copia `.env.example` a `.env`.
+2. Si esas variables están vacías en un entorno local de desarrollo, se usan dummy claramente locales (`dev-only-local-mgomez` y `dev-only-local-lsotelon`). No las uses en la URL pública.
+3. Si `data/gastos.sqlite` ya tiene esos usuarios, el arranque **no cambia** las claves. Para rotarlas hay que definir las variables y recrear los usuarios, o actualizar el hash a mano.
+
+Un admin puede crear un tercer perfil de **solo lectura** (`viewer` / usuario). Ese perfil ve Presupuesto y Analítica, pero no puede añadir, editar, arrastrar, guardar, descargar copia ni restaurar. El servidor rechaza cada escritura (no solo la interfaz).
 
 El presupuesto vive en SQLite en el servidor (`data/gastos.sqlite`) y también en `localStorage`. Las tablas cubren meses, ingresos, categorías, gastos, subgastos (charges), detalles, usuarios y sesiones. Si existe un `data/gastos.json` de una versión anterior, se importa a SQLite al arrancar. **Guardar** y cada edición (solo **admin**) escriben las dos copias. Un perfil de **solo lectura** (`viewer`) puede ver Presupuesto y Analítica, pero no añadir, editar, arrastrar ni guardar.
 
-En el pie un admin puede **Descargar copia** o **Restaurar desde archivo**.
+`/data/`, los `.sqlite` y el código de `server/` no se sirven por HTTP. En el pie un admin autenticado puede **Descargar copia** o **Restaurar desde archivo**.
 
 ## Cómo ejecutarlo
 

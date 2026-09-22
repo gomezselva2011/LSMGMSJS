@@ -6,13 +6,31 @@ import { gastosApiPlugin } from './server/gastos-api.js'
 // ya corre, reúsala (`npm run public-url`). NUNCA `cloudflared tunnel --url`
 // otra vez: cada restart inventa un hostname trycloudflare nuevo.
 
+const auth = authPlugin()
+
 export default defineConfig({
-  plugins: [authPlugin(), gastosApiPlugin()],
+  plugins: [
+    auth,
+    gastosApiPlugin({
+      getUser: (req) => auth.store.userFromRequest(req),
+    }),
+  ],
   server: {
     host: '0.0.0.0',
     port: 4731,
     strictPort: true,
     allowedHosts: true,
+    fs: {
+      deny: [
+        '.env',
+        '.env.*',
+        'data/**',
+        '**/*.sqlite',
+        '**/*.sqlite-*',
+        'server/**',
+        'scripts/**',
+      ],
+    },
   },
   preview: {
     host: '0.0.0.0',

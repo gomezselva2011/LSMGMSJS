@@ -286,7 +286,7 @@ function renderSavedMonths() {
   nav.innerHTML = savedMonthKeys()
     .map((key) => {
       const current = key === state.currentMonth
-      return `<button type="button" class="month-chip-btn${current ? ' is-current' : ''}" data-action="open-month" data-month="${key}" ${current ? 'aria-current="page"' : ''}>${escapeHtml(formatMonthLabel(key))}</button>`
+      return `<button type="button" class="month-chip-btn${current ? ' is-current' : ''}" data-action="open-month" data-month="${escapeHtml(key)}" ${current ? 'aria-current="page"' : ''}>${escapeHtml(formatMonthLabel(key))}</button>`
     })
     .join('')
 }
@@ -431,14 +431,14 @@ function rowActions(kind, id, extra = '') {
   }
   const moveBtn =
     kind === 'expense'
-      ? `<button type="button" class="btn btn-row btn-move" data-action="move-expense" data-id="${id}">Mover a…</button>`
+      ? `<button type="button" class="btn btn-row btn-move" data-action="move-expense" data-id="${escapeHtml(id)}">Mover a…</button>`
       : ''
   return `
     <div class="row-actions">
       ${extra}
       ${moveBtn}
-      <button type="button" class="btn btn-row" data-action="edit-${kind}" data-id="${id}">Editar</button>
-      <button type="button" class="btn btn-row" data-action="delete-${kind}" data-id="${id}">Eliminar</button>
+      <button type="button" class="btn btn-row" data-action="edit-${kind}" data-id="${escapeHtml(id)}">Editar</button>
+      <button type="button" class="btn btn-row" data-action="delete-${kind}" data-id="${escapeHtml(id)}">Eliminar</button>
     </div>
   `
 }
@@ -504,11 +504,11 @@ function ledgerRow(item, kind) {
   const nameInner = `<span class="ledger-title">${escapeHtml(item.name)}</span>${badge}${rubroMark}${detailsMark}`
   const name =
     kind === 'expense'
-      ? `<button type="button" class="ledger-name" data-action="open-details" data-id="${item.id}">${nameInner}</button>`
+      ? `<button type="button" class="ledger-name" data-action="open-details" data-id="${escapeHtml(item.id)}">${nameInner}</button>`
       : `<span class="ledger-name">${nameInner}</span>`
   const detailsBtn =
     kind === 'expense'
-      ? `<button type="button" class="btn btn-row" data-action="open-details" data-id="${item.id}">Ver detalles</button>`
+      ? `<button type="button" class="btn btn-row" data-action="open-details" data-id="${escapeHtml(item.id)}">Ver detalles</button>`
       : ''
   const charges = kind === 'expense' && Array.isArray(item.charges) ? item.charges : []
   const hasSubs = charges.length > 0
@@ -516,7 +516,7 @@ function ledgerRow(item, kind) {
   const expanded = hasSubs && expandedSubgastoIds.has(item.id)
   const toggleLabel = expanded ? 'Ocultar subgastos' : 'Mostrar subgastos'
   const toggleBtn = hasSubs
-    ? `<button type="button" class="btn-add-sub" data-action="toggle-subgastos" data-id="${item.id}" aria-label="${toggleLabel} de ${escapeHtml(item.name)}" title="${toggleLabel}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '−' : '+'}</button>`
+    ? `<button type="button" class="btn-add-sub" data-action="toggle-subgastos" data-id="${escapeHtml(item.id)}" aria-label="${toggleLabel} de ${escapeHtml(item.name)}" title="${toggleLabel}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '−' : '+'}</button>`
     : ''
   const grip =
     kind === 'expense' && canEdit()
@@ -539,7 +539,7 @@ function ledgerRow(item, kind) {
   `
   const dragAttrs =
     kind === 'expense' && canEdit()
-      ? ` draggable="true" data-expense-id="${item.id}" data-from-category="${item.categoryId}"`
+      ? ` draggable="true" data-expense-id="${escapeHtml(item.id)}" data-from-category="${escapeHtml(item.categoryId || '')}"`
       : ''
 
   if (kind !== 'expense' || !hasSubs) {
@@ -570,7 +570,7 @@ function renderIncomes() {
       : ''
     incomeListEl.innerHTML = `
       <div class="empty empty-block">
-        <p>Todavía no hay ingresos en ${formatMonthTitle(state.currentMonth)}.${canEdit() ? ' Añade el salario u otro ingreso para calcular el balance.' : ''}</p>
+        <p>Todavía no hay ingresos en ${escapeHtml(formatMonthTitle(state.currentMonth))}.${canEdit() ? ' Añade el salario u otro ingreso para calcular el balance.' : ''}</p>
         ${addBtn}
       </div>
     `
@@ -614,7 +614,7 @@ function renderCategories() {
             <p>No hay gastos en ${escapeHtml(category.name)}.</p>
             ${
               canEdit()
-                ? `<button type="button" class="btn btn-ghost" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>`
+                ? `<button type="button" class="btn btn-ghost" data-action="add-expense" data-category="${escapeHtml(category.id)}">Añadir gasto</button>`
                 : ''
             }
           </div>`
@@ -632,7 +632,7 @@ function renderCategories() {
                 type="button"
                 class="btn btn-layout"
                 data-action="set-layout"
-                data-id="${category.id}"
+                data-id="${escapeHtml(category.id)}"
                 data-layout="${LAYOUT_HALF}"
                 aria-pressed="${isFull ? 'false' : 'true'}"
               >Media fila</button>
@@ -640,26 +640,26 @@ function renderCategories() {
                 type="button"
                 class="btn btn-layout"
                 data-action="set-layout"
-                data-id="${category.id}"
+                data-id="${escapeHtml(category.id)}"
                 data-layout="${LAYOUT_FULL}"
                 aria-pressed="${isFull ? 'true' : 'false'}"
               >Fila completa</button>
             </div>
             <div class="row-actions">
-              <button type="button" class="btn btn-row" data-action="add-expense" data-category="${category.id}">Añadir gasto</button>
-              <button type="button" class="btn btn-row" data-action="edit-category" data-id="${category.id}">Renombrar</button>
-              <button type="button" class="btn btn-row" data-action="delete-category" data-id="${category.id}">Eliminar</button>
+              <button type="button" class="btn btn-row" data-action="add-expense" data-category="${escapeHtml(category.id)}">Añadir gasto</button>
+              <button type="button" class="btn btn-row" data-action="edit-category" data-id="${escapeHtml(category.id)}">Renombrar</button>
+              <button type="button" class="btn btn-row" data-action="delete-category" data-id="${escapeHtml(category.id)}">Eliminar</button>
             </div>
           </div>`
       : ''
 
     return `
-      <article class="category-card ${isFull ? 'wide is-full' : 'is-half'}" data-category-id="${category.id}" data-layout="${layout}">
+      <article class="category-card ${isFull ? 'wide is-full' : 'is-half'}" data-category-id="${escapeHtml(category.id)}" data-layout="${layout}">
         <div class="card-head">
           <div
             class="category-drag"
             ${canEdit() ? 'draggable="true"' : ''}
-            data-category-id="${category.id}"
+            data-category-id="${escapeHtml(category.id)}"
             ${canEdit() ? `title="Arrastra para reordenar" aria-label="Arrastrar ${escapeHtml(category.name)} para reordenar"` : ''}
           >
             ${canEdit() ? '<span class="category-handle" aria-hidden="true"></span>' : ''}
@@ -1388,8 +1388,8 @@ function renderCardDialog() {
             ${
               canEdit()
                 ? `<div class="row-actions">
-              <button type="button" class="btn btn-row" data-action="edit-charge" data-id="${charge.id}">Editar</button>
-              <button type="button" class="btn btn-row" data-action="delete-charge" data-id="${charge.id}">Eliminar</button>
+              <button type="button" class="btn btn-row" data-action="edit-charge" data-id="${escapeHtml(charge.id)}">Editar</button>
+              <button type="button" class="btn btn-row" data-action="delete-charge" data-id="${escapeHtml(charge.id)}">Eliminar</button>
             </div>`
                 : ''
             }
@@ -1527,7 +1527,7 @@ function restoreOctober() {
 }
 
 function downloadBackup() {
-  if (!state) return
+  if (!canEdit() || !state) return
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -1816,7 +1816,7 @@ function openMovePicker(id) {
       targets.innerHTML = others
         .map(
           (category) =>
-            `<button type="button" class="btn btn-secondary move-target" data-action="confirm-move" data-category="${category.id}">${escapeHtml(category.name)}</button>`,
+            `<button type="button" class="btn btn-secondary move-target" data-action="confirm-move" data-category="${escapeHtml(category.id)}">${escapeHtml(category.name)}</button>`,
         )
         .join('')
     }

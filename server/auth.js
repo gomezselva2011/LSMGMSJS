@@ -13,7 +13,12 @@ import {
   replaceUsers,
   resolveDbPath,
 } from './db.js'
-import { HOUSEHOLD_SEEDS, PLACEHOLDER_USERNAMES, SEED_ADMIN, SEED_ADMIN_2 } from './household-users.js'
+import {
+  getHouseholdSeeds,
+  PLACEHOLDER_USERNAMES,
+  SEED_ADMIN,
+  SEED_ADMIN_2,
+} from './household-users.js'
 
 const scrypt = promisify(scryptCb)
 
@@ -24,8 +29,13 @@ export const ROLE_ADMIN = 'admin'
 export const ROLE_VIEWER = 'viewer'
 export const ROLE_USER = 'usuario'
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000
+export const LOGIN_WINDOW_MS = 10 * 60 * 1000
+export const LOGIN_MAX_PER_USER = 5
+export const LOGIN_MAX_PER_IP = 20
 const KEYLEN = 64
+const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
 const PHOTO_MAX_BYTES = 1_500_000
+const LOGIN_ERROR = 'Usuario o contraseña incorrectos.'
 
 const PHOTO_TYPES = {
   'image/jpeg': 'jpg',
@@ -34,16 +44,25 @@ const PHOTO_TYPES = {
   'image/webp': 'webp',
 }
 
-const MARK_SVG = Buffer.from(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="#f7f4ee"/><text x="48" y="56" text-anchor="middle" font-family="serif" font-size="20" fill="#1b2a4e">L&amp;M</text></svg>`,
+const MARK_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGcP//Z',
+  'base64',
 )
 
-function sendMarkSvg(res) {
+let dummyHashPromise
+
+function dummyPasswordHash() {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword(randomBytes(16).toString('hex'))
+  return dummyHashPromise
+}
+
+function sendMarkJpeg(res) {
   res.statusCode = 200
-  res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8')
+  res.setHeader('Content-Type', 'image/jpeg')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Cache-Control', 'private, max-age=60')
-  res.setHeader('Content-Length', String(MARK_SVG.length))
-  res.end(MARK_SVG)
+  res.setHeader('Content-Length', String(MARK_JPEG.length))
+  res.end(MARK_JPEG)
 }
 
 function sendJson(res, status, body) {
@@ -51,6 +70,7 @@ function sendJson(res, status, body) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   res.end(payload)
 }
 
@@ -71,7 +91,7 @@ async function readRequestBody(req, limit = 1_000_000) {
 
 export async function hashPassword(password) {
   const salt = randomBytes(16)
-  const hash = await scrypt(String(password), salt, KEYLEN)
+  const hash = await scrypt(String(password), salt, KEYLEN, SCRYPT_OPTIONS)
   return `scrypt:${salt.toString('hex')}:${Buffer.from(hash).toString('hex')}`
 }
 
@@ -82,7 +102,7 @@ export async function verifyPassword(password, stored) {
   const salt = Buffer.from(parts[1], 'hex')
   const expected = Buffer.from(parts[2], 'hex')
   if (!salt.length || !expected.length) return false
-  const actual = Buffer.from(await scrypt(String(password), salt, expected.length))
+  const actual = Buffer.from(await scrypt(String(password), salt, expected.length, SCRYPT_OPTIONS))
   if (actual.length !== expected.length) return false
   return timingSafeEqual(actual, expected)
 }
@@ -105,7 +125,7 @@ export function parseCookies(header) {
 }
 
 function newId(prefix) {
-  return `${prefix}_${randomBytes(8).toString('hex')}`
+  return `${prefix}_${randomBytes(16).toString('hex')}`
 }
 
 function normalizeUsername(value) {
@@ -138,7 +158,28 @@ function publicUser(user) {
   }
 }
 
-function sessionCookie(token, maxAgeSeconds) {
+export function requestIsHttps(req) {
+  const proto = String(req?.headers?.['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase()
+  if (proto === 'https') return true
+  const cfVisitor = String(req?.headers?.['cf-visitor'] || '')
+  if (cfVisitor.includes('"https"') || cfVisitor.includes("'https'")) return true
+  return Boolean(req?.socket?.encrypted)
+}
+
+export function clientIp(req) {
+  const cf = String(req?.headers?.['cf-connecting-ip'] || '').trim()
+  if (cf) return cf.slice(0, 128)
+  const forwarded = String(req?.headers?.['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim()
+  if (forwarded) return forwarded.slice(0, 128)
+  return String(req?.socket?.remoteAddress || 'unknown').slice(0, 128)
+}
+
+function sessionCookie(token, maxAgeSeconds, { secure = false } = {}) {
   const parts = [
     `${COOKIE_NAME}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -146,10 +187,32 @@ function sessionCookie(token, maxAgeSeconds) {
     'SameSite=Lax',
     `Max-Age=${maxAgeSeconds}`,
   ]
+  if (secure) parts.push('Secure')
   if (maxAgeSeconds <= 0) {
     parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT')
   }
   return parts.join('; ')
+}
+
+export function isSensitivePath(pathname) {
+  const raw = String(pathname || '').split('?')[0]
+  let decoded = raw
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    decoded = raw
+  }
+  const normalized = path.posix.normalize(decoded).toLowerCase()
+  if (/(^|\/)data(\/|$)/.test(normalized)) return true
+  if (/(^|\/)server(\/|$)/.test(normalized)) return true
+  if (/(^|\/)scripts(\/|$)/.test(normalized)) return true
+  if (normalized.endsWith('.sqlite') || normalized.endsWith('.sqlite-wal') || normalized.endsWith('.sqlite-shm')) {
+    return true
+  }
+  const base = path.posix.basename(normalized)
+  if (base === '.env' || base.startsWith('.env.')) return true
+  if (base === 'users.json' || base === 'sessions.json' || base === 'gastos.json') return true
+  return false
 }
 
 function isLogoutPath(pathname) {
@@ -190,6 +253,69 @@ function wantsHtml(req) {
   return accept.includes('text/html')
 }
 
+export function createLoginRateLimiter({
+  windowMs = LOGIN_WINDOW_MS,
+  maxPerUser = LOGIN_MAX_PER_USER,
+  maxPerIp = LOGIN_MAX_PER_IP,
+} = {}) {
+  const hits = new Map()
+
+  function bump(key, now) {
+    const entry = hits.get(key)
+    if (!entry || entry.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs })
+      return 1
+    }
+    entry.count += 1
+    return entry.count
+  }
+
+  function count(key, now) {
+    const entry = hits.get(key)
+    if (!entry || entry.resetAt <= now) return 0
+    return entry.count
+  }
+
+  return {
+    tooMany(ip, username) {
+      const now = Date.now()
+      return (
+        count(`u:${ip}:${normalizeUsername(username)}`, now) >= maxPerUser ||
+        count(`i:${ip}`, now) >= maxPerIp
+      )
+    },
+    hit(ip, username) {
+      const now = Date.now()
+      bump(`u:${ip}:${normalizeUsername(username)}`, now)
+      bump(`i:${ip}`, now)
+    },
+    clearUser(ip, username) {
+      hits.delete(`u:${ip}:${normalizeUsername(username)}`)
+    },
+    reset() {
+      hits.clear()
+    },
+  }
+}
+
+export function sniffImageType(buffer) {
+  if (!buffer || buffer.length < 12) return null
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg'
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png'
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'webp'
+  return null
+}
+
+export function safeAvatarPath(avatarsDir, filename) {
+  const base = path.basename(String(filename || ''))
+  if (!/^[A-Za-z0-9_.-]+\.(jpg|jpeg|png|webp)$/i.test(base)) return null
+  const root = path.resolve(avatarsDir)
+  const dest = path.resolve(root, base)
+  const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`
+  if (dest !== root && !dest.startsWith(prefix)) return null
+  return dest
+}
+
 export function createAuthStore(options = {}) {
   const root = options.root || process.cwd()
   const dataDir = path.join(root, 'data')
@@ -199,6 +325,7 @@ export function createAuthStore(options = {}) {
   const avatarsDir = options.avatarsDir || path.join(dataDir, 'avatars')
   const markPath = options.markPath || path.join(root, 'public', 'lm-mark.jpg')
   const dbOptions = { ...options, root, dbPath, usersPath, sessionsPath }
+  const loginLimiter = options.loginLimiter || createLoginRateLimiter()
 
   let users = []
   let sessions = {}
@@ -235,9 +362,10 @@ export function createAuthStore(options = {}) {
   async function ensureSeeded() {
     await mkdir(avatarsDir, { recursive: true })
     await load()
-    const required = HOUSEHOLD_SEEDS
+    const required = getHouseholdSeeds()
     const requiredNames = new Set(required.map((seed) => seed.username))
     let changed = false
+    let createdSeed = false
 
     const kept = users.filter(
       (user) => requiredNames.has(user.username) || !PLACEHOLDER_USERNAMES.has(user.username),
@@ -259,6 +387,7 @@ export function createAuthStore(options = {}) {
         if (users.length < MAX_USERS) {
           await seedUser(seed)
           changed = true
+          createdSeed = true
         }
       } else {
         if (existing.role !== seed.role) {
@@ -282,6 +411,16 @@ export function createAuthStore(options = {}) {
     if (changed) {
       await saveUsers()
       if (pruneSessions()) await saveSessions()
+    }
+
+    if (
+      createdSeed &&
+      !process.env.GASTOS_ADMIN_PASSWORD &&
+      !process.env.GASTOS_ADMIN2_PASSWORD
+    ) {
+      console.info(
+        '[gastos] Semilla local: mgomez y lsotelon con contraseñas dummy de desarrollo. Define GASTOS_ADMIN_PASSWORD y GASTOS_ADMIN2_PASSWORD. Una base ya existente no cambia las claves.',
+      )
     }
   }
 
@@ -308,7 +447,7 @@ export function createAuthStore(options = {}) {
 
   async function createSession(userId) {
     pruneSessions()
-    const token = randomBytes(24).toString('base64url')
+    const token = randomBytes(32).toString('base64url')
     sessions[token] = { userId, expiresAt: Date.now() + SESSION_MS }
     await saveSessions()
     return token
@@ -331,9 +470,9 @@ export function createAuthStore(options = {}) {
 
   async function login(username, password) {
     const user = findByUsername(username)
-    if (!user) return null
-    const ok = await verifyPassword(password, user.passwordHash)
-    if (!ok) return null
+    const stored = user?.passwordHash || (await dummyPasswordHash())
+    const ok = await verifyPassword(password, stored)
+    if (!user || !ok) return null
     const token = await createSession(user.id)
     return { user, token }
   }
@@ -385,8 +524,9 @@ export function createAuthStore(options = {}) {
   }
 
   async function savePhoto(user, buffer, contentType) {
-    const ext = PHOTO_TYPES[String(contentType || '').toLowerCase()]
-    if (!ext) {
+    const claimed = PHOTO_TYPES[String(contentType || '').toLowerCase()]
+    const sniffed = sniffImageType(buffer)
+    if (!claimed || !sniffed || claimed !== sniffed) {
       const error = new Error('Usa una foto JPG, PNG o WebP.')
       error.code = 'INVALID'
       throw error
@@ -402,33 +542,41 @@ export function createAuthStore(options = {}) {
       throw error
     }
     await mkdir(avatarsDir, { recursive: true })
-    const filename = `${user.id}.${ext}`
-    const dest = path.join(avatarsDir, filename)
+    const filename = `${user.id}.${sniffed}`
+    const dest = safeAvatarPath(avatarsDir, filename)
+    if (!dest) {
+      const error = new Error('No se pudo guardar la foto.')
+      error.code = 'INVALID'
+      throw error
+    }
     const tmp = `${dest}.${process.pid}.tmp`
     await writeFile(tmp, buffer)
     await rename(tmp, dest)
-    user.photo = filename
+    user.photo = path.basename(dest)
     await saveUsers()
     return user
   }
 
   async function sendPhoto(user, res) {
     if (user?.photo) {
-      const file = path.join(avatarsDir, user.photo)
-      try {
-        const info = await stat(file)
-        if (info.size > 0) {
-          const ext = path.extname(file).slice(1)
-          const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-          res.statusCode = 200
-          res.setHeader('Content-Type', type)
-          res.setHeader('Content-Length', info.size)
-          res.setHeader('Cache-Control', 'private, max-age=120')
-          createReadStream(file).pipe(res)
-          return
+      const file = safeAvatarPath(avatarsDir, user.photo)
+      if (file) {
+        try {
+          const info = await stat(file)
+          if (info.size > 0) {
+            const ext = path.extname(file).slice(1).toLowerCase()
+            const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+            res.statusCode = 200
+            res.setHeader('Content-Type', type)
+            res.setHeader('X-Content-Type-Options', 'nosniff')
+            res.setHeader('Content-Length', info.size)
+            res.setHeader('Cache-Control', 'private, max-age=120')
+            createReadStream(file).pipe(res)
+            return
+          }
+        } catch {
+          // Fall through to the L&M mark.
         }
-      } catch {
-        // Fall through to the L&M mark.
       }
     }
     try {
@@ -436,20 +584,23 @@ export function createAuthStore(options = {}) {
       if (info.size > 0) {
         res.statusCode = 200
         res.setHeader('Content-Type', 'image/jpeg')
+        res.setHeader('X-Content-Type-Options', 'nosniff')
         res.setHeader('Content-Length', info.size)
         res.setHeader('Cache-Control', 'private, max-age=300')
         createReadStream(markPath).pipe(res)
         return
       }
     } catch {
-      // Last resort: never send JSON/HTML that browsers show as a broken image.
+      // Last resort: never send SVG/HTML that browsers might execute.
     }
-    sendMarkSvg(res)
+    sendMarkJpeg(res)
   }
 
   return {
     dbPath,
     usersPath,
+    avatarsDir,
+    loginLimiter,
     ensureSeeded,
     load,
     userFromRequest,
@@ -465,8 +616,20 @@ export function createAuthStore(options = {}) {
   }
 }
 
+function canWriteBudget(user) {
+  return user?.role === ROLE_ADMIN
+}
+
 export async function handleAuthRequest(req, res, next, store) {
   const pathname = pathnameOf(req)
+
+  if (isSensitivePath(pathname)) {
+    res.statusCode = 404
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-store')
+    res.end('Not found')
+    return true
+  }
 
   if (pathname === '/login') {
     const user = store.userFromRequest(req)
@@ -483,6 +646,7 @@ export async function handleAuthRequest(req, res, next, store) {
   if (pathname.startsWith('/api/')) {
     try {
       if (req.method === 'POST' && pathname === '/api/auth/login') {
+        const ip = clientIp(req)
         const raw = (await readRequestBody(req)).toString('utf8')
         let body
         try {
@@ -491,13 +655,39 @@ export async function handleAuthRequest(req, res, next, store) {
           sendJson(res, 400, { error: 'JSON inválido' })
           return true
         }
-        const result = await store.login(body.username, body.password)
-        if (!result) {
-          sendJson(res, 401, { error: 'Usuario o contraseña incorrectos.' })
+        const username = body.username
+        if (store.loginLimiter?.tooMany(ip, username)) {
+          sendJson(res, 429, { error: 'Demasiados intentos. Espera un momento.' })
           return true
         }
-        res.setHeader('Set-Cookie', sessionCookie(result.token, Math.floor(SESSION_MS / 1000)))
+        const result = await store.login(username, body.password)
+        if (!result) {
+          store.loginLimiter?.hit(ip, username)
+          sendJson(res, 401, { error: LOGIN_ERROR })
+          return true
+        }
+        store.loginLimiter?.clearUser(ip, username)
+        res.setHeader(
+          'Set-Cookie',
+          sessionCookie(result.token, Math.floor(SESSION_MS / 1000), { secure: requestIsHttps(req) }),
+        )
         sendJson(res, 200, { user: store.publicUser(result.user) })
+        return true
+      }
+
+      const user = store.userFromRequest(req)
+      req.gastosUser = user || null
+
+      if (req.method === 'POST' && isLogoutPath(pathname)) {
+        const token = parseCookies(req.headers.cookie)[COOKIE_NAME]
+        await store.dropSession(token)
+        res.setHeader('Set-Cookie', sessionCookie('', 0, { secure: requestIsHttps(req) }))
+        sendJson(res, 200, { ok: true })
+        return true
+      }
+
+      if (!user) {
+        sendJson(res, 401, { error: 'Inicia sesión.' })
         return true
       }
 
@@ -505,21 +695,6 @@ export async function handleAuthRequest(req, res, next, store) {
       if (req.method === 'GET' && photoMatch) {
         const target = store.findUser(photoMatch[1])
         await store.sendPhoto(target, res)
-        return true
-      }
-
-      const user = store.userFromRequest(req)
-
-      if (req.method === 'POST' && isLogoutPath(pathname)) {
-        const token = parseCookies(req.headers.cookie)[COOKIE_NAME]
-        await store.dropSession(token)
-        res.setHeader('Set-Cookie', sessionCookie('', 0))
-        sendJson(res, 200, { ok: true })
-        return true
-      }
-
-      if (!user) {
-        sendJson(res, 401, { error: 'Inicia sesión.' })
         return true
       }
 
@@ -534,7 +709,7 @@ export async function handleAuthRequest(req, res, next, store) {
       }
 
       if (req.method === 'POST' && pathname === '/api/users') {
-        if (user.role !== ROLE_ADMIN) {
+        if (!canWriteBudget(user)) {
           sendJson(res, 403, { error: 'Solo un admin puede crear perfiles.' })
           return true
         }
@@ -575,8 +750,9 @@ export async function handleAuthRequest(req, res, next, store) {
       }
 
       if (pathname === '/api/gastos' || pathname === '/api/gastos/') {
-        const mutating = req.method === 'PUT' || req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE'
-        if (mutating && user.role !== ROLE_ADMIN) {
+        const mutating =
+          req.method === 'PUT' || req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE'
+        if (mutating && !canWriteBudget(user)) {
           sendJson(res, 403, { error: 'Solo un admin puede guardar el presupuesto.' })
           return true
         }
@@ -622,6 +798,7 @@ export function authPlugin(options = {}) {
 
   return {
     name: 'gastos-auth',
+    store,
     async configureServer(server) {
       await store.ensureSeeded()
       server.middlewares.use(middleware)

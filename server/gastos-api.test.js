@@ -207,4 +207,31 @@ describe('gastos API sqlite store', () => {
     const db = openGastosDb({ dbPath })
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM months').get().n, 0)
   })
+
+  it('enforces getUser: unauthenticated PUT is 401 and viewer PUT is 403', async () => {
+    const payload = JSON.stringify({ version: 1, currentMonth: '2026-10', months: { '2026-10': { expenses: [] } } })
+    const anon = mockRes()
+    await handleGastosApi(putReq(payload), anon, () => {}, {
+      dbPath,
+      dataPath,
+      getUser: () => null,
+    })
+    assert.equal(anon.statusCode, 401)
+
+    const viewer = mockRes()
+    await handleGastosApi(putReq(payload), viewer, () => {}, {
+      dbPath,
+      dataPath,
+      getUser: () => ({ role: 'viewer' }),
+    })
+    assert.equal(viewer.statusCode, 403)
+
+    const admin = mockRes()
+    await handleGastosApi(putReq(payload), admin, () => {}, {
+      dbPath,
+      dataPath,
+      getUser: () => ({ role: 'admin' }),
+    })
+    assert.equal(admin.statusCode, 200)
+  })
 })

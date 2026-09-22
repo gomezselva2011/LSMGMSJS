@@ -11,11 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
 
 # Household save file and local accounts (survive Vite restart; not committed)
 data/gastos.json
 data/users.json
 data/sessions.json
+data/seed-passwords.json
 data/*.sqlite
 data/*.sqlite-*
 data/avatars/*

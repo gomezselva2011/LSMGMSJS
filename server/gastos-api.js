@@ -7,6 +7,7 @@ import {
   resolveDbPath,
   writeHouseholdState,
 } from './db.js'
+import { ROLE_ADMIN } from './household-users.js'
 
 export const GASTOS_API_PATH = '/api/gastos'
 const MAX_BYTES = 2_000_000
@@ -82,6 +83,20 @@ export async function handleGastosApi(req, res, next, options = {}) {
   }
 
   try {
+    if (typeof options.getUser === 'function') {
+      const user = options.getUser(req)
+      const mutating =
+        req.method === 'PUT' || req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE'
+      if (!user) {
+        sendJson(res, 401, { error: 'Inicia sesión.' })
+        return true
+      }
+      if (mutating && user.role !== ROLE_ADMIN) {
+        sendJson(res, 403, { error: 'Solo un admin puede guardar el presupuesto.' })
+        return true
+      }
+    }
+
     const db = await ensureGastosDb(dbOptions)
 
     if (req.method === 'GET') {

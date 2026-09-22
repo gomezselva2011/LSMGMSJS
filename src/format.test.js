@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  escapeHtml,
   formatCreateMonthLabel,
   formatCreateNextLabel,
   formatCreatePrevLabel,
@@ -35,5 +36,12 @@ describe('create-month labels', () => {
     assert.equal(isMonthKey('2026-09'), true)
     assert.equal(isMonthKey('2026-10'), true)
     assert.equal(isMonthKey('octubre'), false)
+  })
+})
+
+describe('escapeHtml', () => {
+  it('escapes markup in names and notes', () => {
+    assert.equal(escapeHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;')
+    assert.equal(escapeHtml(`"'&`), '&quot;&#39;&amp;')
   })
 })
