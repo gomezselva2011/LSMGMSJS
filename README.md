@@ -2,13 +2,15 @@
 
 Presupuesto mensual de Melissa y Lenin: Casa San Andrés, Casa Praderas de Sandino y el resto de gastos del mes. La interfaz está en español. Octubre 2026 viene precargado desde la hoja **Gastos**, con ingreso real de **$4,800** (no $5,000). Los gastos de la hoja se mantienen; el balance usa esos $4,800.
 
-## URL pública (no cambiar)
+## URL pública
 
-**Esta es la URL pública; no reiniciar el túnel ni inventar otra.**
+**Usa solo esta** (comprobada con `/login` HTTP 200). Las anteriores ya no existen:
 
-https://split-holders-converted-cooling.trycloudflare.com
+https://stockings-inter-reserves-tom.trycloudflare.com
 
-Esa dirección está también en `data/public-url.txt`. El túnel Cloudflare vive en tmux `gastos-public-tunnel` y apunta a Vite en `127.0.0.1:4731`. Un *quick tunnel* (`cloudflared tunnel --url`) **cambia de hostname cada vez que se relanza**. Si el túnel ya está en marcha, déjalo: `npm run public-url` (script `scripts/ensure-public-tunnel.sh`) lo reusa y no abre otro. La ventana `keep` de esa sesión espera al proceso vivo. Solo lo relanza si el proceso murió, o si Cloudflare ya olvidó el túnel (`Tunnel not found` + el hostname no resuelve): en esos casos el hostname anterior no se puede recuperar.
+Muertas (no las abras): `conventions-youth-compilation-mind.trycloudflare.com` y `split-holders-converted-cooling.trycloudflare.com`.
+
+Esa dirección está en `data/public-url.txt`. El túnel vive en tmux `gastos-public-tunnel` (ventana `keep`, script `scripts/cloudflared-keepalive.sh`) y apunta a Vite en `127.0.0.1:4731`, con **HTTP/2** y rearranque automático si el proceso muere o Cloudflare responde `Tunnel not found`. Un *quick tunnel* **cambia de hostname** cuando Cloudflare lo da de baja: no hay cuenta de Cloudflare en esta máquina, así que no se puede fijar un dominio estable (túnel con nombre). `npm run public-url` reusa el túnel vivo y no abre un segundo.
 
 Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt**, nunca en texto plano.
 
