@@ -1,0 +1,38 @@
+# Blueprint de Render para Gastos del hogar.
+#
+# HECHO (docs Render, 2026): el plan Free NO admite disco persistente.
+# El filesystem de un Web Service Free es efímero: SQLite en data/gastos.sqlite
+# se pierde en cada redeploy, restart o spin-down.
+# Disco persistente = Web Service de pago (Starter ~7 USD/mes) + disco
+# (~0,25 USD/GB/mes). Este Blueprint usa plan starter + 1 GB en /var/data.
+#
+# No despliega nada por sí solo: Melissa tiene que conectar un repo de GitHub
+# (este clone de Origin/agent_temp no le sirve a Render) y aplicar el Blueprint.
+
+services:
+  - type: web
+    name: gastos-hogar
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    disk:
+      name: gastos-sqlite
+      # Solo lo que vive bajo este mount sobrevive a deploys y reinicios.
+      # El resto del contenedor (incluido un data/ en el código) es efímero.
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: GASTOS_DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GASTOS_ADMIN_PASSWORD
+        sync: false
+      - key: GASTOS_ADMIN2_PASSWORD
+        sync: false

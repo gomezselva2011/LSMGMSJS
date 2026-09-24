@@ -12,6 +12,8 @@ Muertas (no las abras): `alto-impressed-meals-missile.trycloudflare.com`, `fin-r
 
 Esa dirección está en `data/public-url.txt`. El túnel vive en tmux `gastos-public-tunnel` (ventana `keep`, script `scripts/cloudflared-keepalive.sh`) y apunta a Vite en `127.0.0.1:4731`, con **HTTP/2** y rearranque automático si el proceso muere o Cloudflare responde `Tunnel not found`. Un *quick tunnel* **cambia de hostname** cuando Cloudflare lo da de baja: no hay cuenta de Cloudflare en esta máquina, así que no se puede fijar un dominio estable (túnel con nombre). `npm run public-url` reusa el túnel vivo y no abre un segundo.
 
+**Esa URL no es hosting permanente.** Si se apaga esta máquina Cloud Agent, el túnel muere y `data/gastos.sqlite` (gitignored) se pierde con el disco efímero. El runbook para un sitio fijo está en [docs/hosting-gratis.md](docs/hosting-gratis.md). No copies contraseñas al repositorio.
+
 Hay que entrar con usuario y contraseña. Hasta **3** perfiles. La foto por defecto es la marca L&M (`/lm-mark.jpg`). Las contraseñas se guardan con **scrypt** (sal distinta por usuario), nunca en texto plano.
 
 ## Perfiles de arranque
@@ -44,6 +46,8 @@ Otras órdenes:
 ```bash
 npm run build
 npm run preview
+npm start          # producción local: 0.0.0.0 y PORT (por defecto 4731)
+npm run export-sqlite
 ```
 
 Un admin puede crear un tercer perfil (nombre, usuario, contraseña y rol admin o viewer). La foto por defecto es la marca **L&M**.
@@ -60,3 +64,7 @@ Un admin puede crear un tercer perfil (nombre, usuario, contraseña y rol admin 
 ## Restaurar
 
 En el pie de página, **Restaurar octubre 2026** vuelve a cargar el presupuesto semilla de ese mes. El resto de los meses no se toca. Solo un admin puede restaurar.
+
+## Hosting permanente
+
+Hace falta un proceso Node (no un static site) y un **disco persistente** para SQLite. Render Free no monta disco. Pasos, costes y cómo subir `gastos.sqlite`: [docs/hosting-gratis.md](docs/hosting-gratis.md).

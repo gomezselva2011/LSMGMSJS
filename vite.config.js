@@ -34,7 +34,8 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 4731,
+    // Render/Fly inyectan PORT. En local, 4731 para no pelear con `npm run dev` ni el túnel.
+    port: Number.parseInt(process.env.PORT || '4731', 10),
     strictPort: true,
     allowedHosts: true,
   },

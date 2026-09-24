@@ -25,6 +25,8 @@ data/*.sqlite-*
 data/avatars/*
 !data/avatars/.gitkeep
 data/*.tmp
+exports/
+
 
 # Editor directories and files
 .vscode/*

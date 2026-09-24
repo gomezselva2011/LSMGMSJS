@@ -555,4 +555,26 @@ describe('auth store and HTTP', () => {
     assert.equal(await fail(), 401)
     assert.equal(await fail(), 429)
   })
+
+  it('refuses production boot without SESSION_SECRET', async () => {
+    const previousNode = process.env.NODE_ENV
+    const previousSecret = process.env.SESSION_SECRET
+    process.env.NODE_ENV = 'production'
+    delete process.env.SESSION_SECRET
+    const fresh = await fs.mkdtemp(path.join(os.tmpdir(), 'gastos-auth-prod-'))
+    const mark = path.join(fresh, 'public', 'lm-mark.jpg')
+    await fs.mkdir(path.dirname(mark), { recursive: true })
+    await fs.writeFile(mark, Buffer.from('fake-lm-mark'))
+    const other = createAuthStore({ root: fresh, markPath: mark })
+    try {
+      await assert.rejects(() => other.ensureSeeded(), /SESSION_SECRET/)
+    } finally {
+      closeGastosDb(other.dbPath)
+      await fs.rm(fresh, { recursive: true, force: true })
+      if (previousNode == null) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previousNode
+      if (previousSecret == null) delete process.env.SESSION_SECRET
+      else process.env.SESSION_SECRET = previousSecret
+    }
+  })
 })

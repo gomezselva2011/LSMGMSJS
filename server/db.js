@@ -35,27 +35,48 @@ const EXPENSE_KEYS = new Set([
 ])
 const CHARGE_KEYS = new Set(['id', 'name', 'amount', 'currency', 'nombre', 'title', 'concepto', 'label', 'monto', 'cents', 'value', 'pago', 'moneda'])
 
-export function defaultDbPath(root = process.cwd()) {
-  return path.join(root, 'data', 'gastos.sqlite')
+function envDataDir(env = process.env) {
+  const value = env?.GASTOS_DATA_DIR
+  if (value == null) return null
+  const text = String(value).trim()
+  return text ? path.resolve(text) : null
 }
 
-export function defaultGastosJsonPath(root = process.cwd()) {
-  return path.join(root, 'data', 'gastos.json')
+/**
+ * Directory for sqlite, avatars, and leftover JSON.
+ * Explicit options (dataDir / dbPath / dataPath / root) win; otherwise `GASTOS_DATA_DIR`, else `<cwd>/data`.
+ */
+export function resolveDataDir(options = {}) {
+  if (options.dataDir) return path.resolve(options.dataDir)
+  if (options.dbPath) return path.dirname(path.resolve(options.dbPath))
+  if (options.dataPath) return path.dirname(path.resolve(options.dataPath))
+  if (options.root) return path.join(options.root, 'data')
+  const fromEnv = envDataDir(options.env || process.env)
+  if (fromEnv) return fromEnv
+  return path.join(process.cwd(), 'data')
 }
 
-export function defaultUsersJsonPath(root = process.cwd()) {
-  return path.join(root, 'data', 'users.json')
+export function defaultDbPath(root) {
+  return path.join(resolveDataDir(root === undefined ? {} : { root }), 'gastos.sqlite')
 }
 
-export function defaultSessionsJsonPath(root = process.cwd()) {
-  return path.join(root, 'data', 'sessions.json')
+export function defaultGastosJsonPath(root) {
+  return path.join(resolveDataDir(root === undefined ? {} : { root }), 'gastos.json')
+}
+
+export function defaultUsersJsonPath(root) {
+  return path.join(resolveDataDir(root === undefined ? {} : { root }), 'users.json')
+}
+
+export function defaultSessionsJsonPath(root) {
+  return path.join(resolveDataDir(root === undefined ? {} : { root }), 'sessions.json')
 }
 
 export function resolveDbPath(options = {}) {
   if (options.dbPath) return options.dbPath
   if (options.dataPath && String(options.dataPath).endsWith('.sqlite')) return options.dataPath
   if (options.dataPath) return path.join(path.dirname(options.dataPath), 'gastos.sqlite')
-  return defaultDbPath(options.root || process.cwd())
+  return path.join(resolveDataDir(options), 'gastos.sqlite')
 }
 
 export function normalizeRole(value) {
@@ -642,13 +663,13 @@ async function readJsonIfPresent(filePath, fallback) {
 }
 
 export async function migrateLegacyJson(db, options = {}) {
-  const root = options.root || process.cwd()
-  const usersPath = options.usersPath || defaultUsersJsonPath(root)
-  const sessionsPath = options.sessionsPath || defaultSessionsJsonPath(root)
+  const dataDir = resolveDataDir(options)
+  const usersPath = options.usersPath || path.join(dataDir, 'users.json')
+  const sessionsPath = options.sessionsPath || path.join(dataDir, 'sessions.json')
   const gastosPath =
     options.gastosJsonPath ||
     (options.dataPath && String(options.dataPath).endsWith('.json') ? options.dataPath : null) ||
-    defaultGastosJsonPath(root)
+    path.join(dataDir, 'gastos.json')
 
   if (countUsers(db) === 0) {
     const userFile = await readJsonIfPresent(usersPath, null)

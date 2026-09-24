@@ -12,7 +12,7 @@ import { ROLE_ADMIN } from './household-users.js'
 export const GASTOS_API_PATH = '/api/gastos'
 const MAX_BYTES = 2_000_000
 
-export function defaultDataPath(root = process.cwd()) {
+export function defaultDataPath(root) {
   return defaultGastosJsonPath(root)
 }
 

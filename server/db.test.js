@@ -233,4 +233,30 @@ describe('sqlite household db', () => {
     assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
     assert.equal(again.months['2026-09'].expenses[0].charges[0].name, 'Lentes')
   })
+
+  it('points sqlite at GASTOS_DATA_DIR when no root/dbPath is passed', async () => {
+    const dir = await tmpRoot()
+    const dataDir = path.join(dir, 'persist')
+    await fs.mkdir(dataDir, { recursive: true })
+    const previous = process.env.GASTOS_DATA_DIR
+    process.env.GASTOS_DATA_DIR = dataDir
+    const dbPath = path.join(dataDir, 'gastos.sqlite')
+    try {
+      const { resolveDbPath } = await import('./db.js')
+      assert.equal(resolveDbPath({}), dbPath)
+      const db = openGastosDb({ dataDir })
+      writeHouseholdState(db, {
+        version: 1,
+        currentMonth: '2026-10',
+        months: { '2026-10': { expenses: [{ id: 'exp-disk', name: 'Disco', amount: 1 }] } },
+      })
+      closeGastosDb(dbPath)
+      const info = await fs.stat(dbPath)
+      assert.ok(info.size > 0)
+    } finally {
+      closeGastosDb(dbPath)
+      if (previous == null) delete process.env.GASTOS_DATA_DIR
+      else process.env.GASTOS_DATA_DIR = previous
+    }
+  })
 })

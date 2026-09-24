@@ -11,6 +11,7 @@ import {
   openGastosDb,
   replaceSessions,
   replaceUsers,
+  resolveDataDir,
   resolveDbPath,
 } from './db.js'
 import {
@@ -318,15 +319,22 @@ export function safeAvatarPath(avatarsDir, filename) {
   return dest
 }
 
+function requireProductionSecrets(env = process.env) {
+  if (env.NODE_ENV !== 'production') return
+  if (!String(env.SESSION_SECRET || '').trim()) {
+    throw new Error('[gastos] SESSION_SECRET es obligatorio en producción.')
+  }
+}
+
 export function createAuthStore(options = {}) {
   const root = options.root || process.cwd()
-  const dataDir = path.join(root, 'data')
-  const dbPath = resolveDbPath(options)
+  const dataDir = options.dataDir || resolveDataDir(options)
+  const dbPath = resolveDbPath({ ...options, dataDir })
   const usersPath = options.usersPath || path.join(dataDir, 'users.json')
   const sessionsPath = options.sessionsPath || path.join(dataDir, 'sessions.json')
   const avatarsDir = options.avatarsDir || path.join(dataDir, 'avatars')
   const markPath = options.markPath || path.join(root, 'public', 'lm-mark.jpg')
-  const dbOptions = { ...options, root, dbPath, usersPath, sessionsPath }
+  const dbOptions = { ...options, root, dataDir, dbPath, usersPath, sessionsPath }
   const loginLimiter = options.loginLimiter || createLoginRateLimiter()
 
   let users = []
@@ -362,6 +370,7 @@ export function createAuthStore(options = {}) {
   }
 
   async function ensureSeeded() {
+    requireProductionSecrets()
     await mkdir(avatarsDir, { recursive: true })
     await load()
     const required = getHouseholdSeeds()
@@ -375,6 +384,17 @@ export function createAuthStore(options = {}) {
     if (kept.length !== users.length) {
       users = kept
       changed = true
+    }
+
+    const missingSeeds = required.filter((seed) => !findByUsername(seed.username))
+    if (
+      missingSeeds.length &&
+      process.env.NODE_ENV === 'production' &&
+      (!process.env.GASTOS_ADMIN_PASSWORD || !process.env.GASTOS_ADMIN2_PASSWORD)
+    ) {
+      throw new Error(
+        '[gastos] GASTOS_ADMIN_PASSWORD y GASTOS_ADMIN2_PASSWORD son obligatorios al crear la base en producción.',
+      )
     }
 
     for (const seed of required) {
