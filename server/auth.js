@@ -232,6 +232,8 @@ function isPublicAsset(pathname) {
   if (pathname.startsWith('/@')) return true
   if (pathname.startsWith('/node_modules/')) return true
   if (pathname.startsWith('/src/login')) return true
+  // login.html module graph (relative imports from /src/login.js)
+  if (pathname === '/src/password-toggle.js' || pathname === '/src/photo.js') return true
   if (
     pathname === '/boot.css' ||
     pathname === '/lm-mark.jpg' ||

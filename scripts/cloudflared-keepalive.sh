@@ -93,7 +93,8 @@ advertised_url() {
 hostname_in_dns() {
   local host="$1"
   [[ -n "$host" ]] || return 1
-  getent hosts "$host" >/dev/null 2>&1
+  # Un NXDOMAIN de trycloudflare a veces cuelga getent; no bloquear el supervisor.
+  timeout 2 getent hosts "$host" >/dev/null 2>&1
 }
 
 recent_log() {

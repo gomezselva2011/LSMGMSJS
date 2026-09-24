@@ -6,9 +6,9 @@ Presupuesto mensual de Melissa y Lenin: Casa San Andrés, Casa Praderas de Sandi
 
 **Usa solo esta** (comprobada con `/login` HTTP 200). Las anteriores ya no existen:
 
-https://fin-reconstruction-cleveland-tom.trycloudflare.com
+https://alto-impressed-meals-missile.trycloudflare.com
 
-Muertas (no las abras): `stockings-inter-reserves-tom.trycloudflare.com`, `conventions-youth-compilation-mind.trycloudflare.com` y `split-holders-converted-cooling.trycloudflare.com`.
+Muertas (no las abras): `fin-reconstruction-cleveland-tom.trycloudflare.com`, `stockings-inter-reserves-tom.trycloudflare.com`, `conventions-youth-compilation-mind.trycloudflare.com` y `split-holders-converted-cooling.trycloudflare.com`.
 
 Esa dirección está en `data/public-url.txt`. El túnel vive en tmux `gastos-public-tunnel` (ventana `keep`, script `scripts/cloudflared-keepalive.sh`) y apunta a Vite en `127.0.0.1:4731`, con **HTTP/2** y rearranque automático si el proceso muere o Cloudflare responde `Tunnel not found`. Un *quick tunnel* **cambia de hostname** cuando Cloudflare lo da de baja: no hay cuenta de Cloudflare en esta máquina, así que no se puede fijar un dominio estable (túnel con nombre). `npm run public-url` reusa el túnel vivo y no abre un segundo.
 

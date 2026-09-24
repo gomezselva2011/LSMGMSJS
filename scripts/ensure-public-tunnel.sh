@@ -73,7 +73,7 @@ url_responds() {
 hostname_in_dns() {
   local host="$1"
   [[ -n "$host" ]] || return 1
-  getent hosts "$host" >/dev/null 2>&1
+  timeout 2 getent hosts "$host" >/dev/null 2>&1
 }
 
 log_says_tunnel_not_found() {
