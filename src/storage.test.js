@@ -33,6 +33,7 @@ const {
   loadState,
   saveState,
   loadHousehold,
+  HouseholdLoadError,
   emptyMonthFor,
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
@@ -290,19 +291,25 @@ describe('Restaurar octubre', () => {
     assert.equal(november.charges[0].name, 'Celular')
   })
 
-  it('fatal restore keeps November charges when October is reset', () => {
+  it('fatal restore keeps November charges from in-memory state, not localStorage', () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(
         savedState({
           months: {
             [SEEDED_MONTH]: octoberWithCharges([LENTES]),
-            '2026-11': octoberWithCharges([CELULAR]),
+            '2026-11': octoberWithCharges([{ id: 'chg-stale', name: 'Stale', amount: 1, currency: 'USD' }]),
           },
         }),
       ),
     )
-    const state = restoreOctoberPreservingOthers()
+    const memory = savedState({
+      months: {
+        [SEEDED_MONTH]: octoberWithCharges([LENTES]),
+        '2026-11': octoberWithCharges([CELULAR]),
+      },
+    })
+    const state = restoreOctoberPreservingOthers(memory)
     const october = state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
     const november = state.months['2026-11'].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
     assert.equal(october.charges.length, 0)
@@ -364,11 +371,12 @@ describe('loadHousehold server store', () => {
     assert.equal(monthHasExpenses(loaded.state.months[SEEDED_MONTH]), true)
   })
 
-  it('seeds once when server and browser are empty, then writes the server file', async () => {
+  it('seeds once from code when server and browser are empty, then writes the server file', async () => {
     stored = {}
     const loaded = await loadHousehold()
     assert.equal(loaded.fromStorage, false)
     assert.equal(loaded.fromServer, false)
+    assert.equal(loaded.seeded, true)
     const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
     assert.equal(card.charges.length, 0)
     assert.equal(puts.length >= 1, true)
@@ -376,19 +384,32 @@ describe('loadHousehold server store', () => {
     assert.equal(puts.at(-1).saveScope, 'all')
   })
 
-  it('copies localStorage to the server when the server file is empty', async () => {
+  it('does not copy localStorage onto an empty server', async () => {
     saveState(savedState())
     stored = {}
     const loaded = await loadHousehold()
     const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
-    assert.equal(loaded.fromStorage, true)
+    assert.equal(loaded.fromStorage, false)
     assert.equal(loaded.fromServer, false)
-    assert.equal(card.charges[1].name, 'Celular')
+    assert.equal(loaded.seeded, true)
+    assert.equal(card.charges.length, 0)
     assert.equal(
-      puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges[1].name,
-      'Celular',
+      (puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges || [])
+        .length,
+      0,
     )
     assert.equal(puts.at(-1).saveScope, 'all')
+  })
+
+  it('loads from the server when localStorage is empty', async () => {
+    stored = savedState()
+    memory.clear()
+    const loaded = await loadHousehold()
+    const card = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa')
+    assert.equal(loaded.fromServer, true)
+    assert.equal(loaded.fromStorage, false)
+    assert.equal(card.charges[1].name, 'Celular')
+    assert.equal(puts.length, 0)
   })
 
   it('after login, sqlite October wins over stale seed localStorage and is not PUT back', async () => {
@@ -445,11 +466,34 @@ describe('loadHousehold server store', () => {
       }
       return { ok: false, status: 405, async json() { return {} } }
     }
-    const loaded = await loadHousehold()
-    assert.equal(loaded.fromServer, false)
-    assert.equal(loaded.uploadBlocked, true)
+    await assert.rejects(() => loadHousehold(), (error) => {
+      assert.equal(error instanceof HouseholdLoadError, true)
+      assert.equal(error.status, 'unauthorized')
+      return true
+    })
     assert.equal(puts.length, 0)
-    assert.equal(monthHasExpenses(loaded.state.months[SEEDED_MONTH]), true)
+  })
+
+  it('does not fall back to localStorage when GET /api/gastos fails', async () => {
+    saveState(savedState())
+    window.fetch = async (url, opts = {}) => {
+      assert.equal(String(url).split('?')[0], GASTOS_API_PATH)
+      const method = String(opts.method || 'GET').toUpperCase()
+      if (method === 'GET') {
+        return { ok: false, status: 500, async json() { return { error: 'fail' } } }
+      }
+      if (method === 'PUT' || method === 'POST') {
+        puts.push(JSON.parse(String(opts.body)))
+        return { ok: true, status: 200, async json() { return { ok: true } } }
+      }
+      return { ok: false, status: 405, async json() { return {} } }
+    }
+    await assert.rejects(() => loadHousehold(), (error) => {
+      assert.equal(error instanceof HouseholdLoadError, true)
+      assert.equal(error.status, 'error')
+      return true
+    })
+    assert.equal(puts.length, 0)
   })
 
   it('queueServerSave uses currentMonth as the save key when November is open', async () => {

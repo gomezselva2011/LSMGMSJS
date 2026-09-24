@@ -112,8 +112,23 @@ body {
   color: #7f2a2a;
 }
 
-.boot-error .btn {
+.boot-error .btn,
+.boot .btn-cta {
   margin-top: 1rem;
+  border: 0;
+  border-radius: 999px;
+  min-height: 48px;
+  padding: 0.5rem 1.2rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: #a63f1e;
+  color: #fffaf6;
+}
+
+.boot .btn-cta:hover,
+.boot-error .btn:hover {
+  background: #7a2d13;
 }
 
 .login-folio {

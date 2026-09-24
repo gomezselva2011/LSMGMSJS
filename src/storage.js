@@ -460,14 +460,14 @@ export function restoreOctoberMonth(state) {
   return normalizeState(next)
 }
 
-export function restoreOctoberPreservingOthers() {
+export function restoreOctoberPreservingOthers(existing) {
   const kept = {}
-  for (const { parsed } of readStoredPayloads()) {
-    const coerced = coerceState(parsed)
-    if (!coerced?.months) continue
-    for (const [key, month] of Object.entries(coerced.months)) {
+  const source = isPlainObject(existing) ? existing : null
+  const months = source?.months
+  if (isPlainObject(months)) {
+    for (const [key, month] of Object.entries(months)) {
       if (key === SEEDED_MONTH) continue
-      kept[key] = mergeMonth(kept[key], month)
+      if (isMonthKey(key) && isPlainObject(month)) kept[key] = month
     }
   }
   const state = createInitialState()
@@ -575,6 +575,32 @@ export async function fetchServerState() {
   return snap.status === 'ok' ? snap.state : null
 }
 
+export class HouseholdLoadError extends Error {
+  constructor(status, message) {
+    super(message)
+    this.name = 'HouseholdLoadError'
+    this.status = status
+  }
+}
+
+const LOAD_ERROR_MESSAGES = {
+  unauthorized: 'Inicia sesión para cargar el presupuesto del servidor.',
+  error: 'No se pudo leer el presupuesto del servidor.',
+  unavailable: 'No hay conexión con el servidor.',
+}
+
+function householdLoadError(status) {
+  return new HouseholdLoadError(status, LOAD_ERROR_MESSAGES[status] || LOAD_ERROR_MESSAGES.error)
+}
+
+function writeReadOnlyCache(state) {
+  try {
+    saveState(state)
+  } catch {
+    // Optional snapshot of the last successful GET. Never a write source.
+  }
+}
+
 let pendingServerPayload = null
 let serverSaveTimer = 0
 
@@ -620,11 +646,7 @@ export async function flushServerSave() {
 
 async function finishLoadedState(state, flags) {
   finalizeState(state)
-  try {
-    saveState(state)
-  } catch {
-    // localStorage may be blocked; sqlite remains the source of truth after login.
-  }
+  if (flags.cache) writeReadOnlyCache(state)
   if (flags.upload) {
     try {
       await queueServerSave(state, flags.allMonths ? { allMonths: true } : {})
@@ -635,57 +657,34 @@ async function finishLoadedState(state, flags) {
   }
   return {
     state,
-    fromStorage: Boolean(flags.fromStorage),
+    fromStorage: false,
     fromServer: Boolean(flags.fromServer),
-    uploadBlocked: Boolean(flags.uploadBlocked),
+    seeded: Boolean(flags.seeded),
+    uploadBlocked: false,
   }
 }
 
 export async function loadHousehold() {
   const snap = await fetchServerSnapshot()
-  let local = null
-  try {
-    local = readLocalState().state
-  } catch (error) {
-    if (snap.status !== 'ok') throw error
-  }
 
   if (snap.status === 'ok' && snap.state) {
-    // After login, sqlite is the source of truth. Do not merge stale/empty
-    // localStorage on top, and do not PUT the browser copy back — that path
-    // used to reseed October or wipe month_key 2026-10.
-    return finishLoadedState(snap.state, { fromServer: true, fromStorage: false, upload: false })
+    // SQLite is the only source of truth. Never merge localStorage, never PUT
+    // a browser copy back — that path reseeded October and wiped 2026-10.
+    return finishLoadedState(snap.state, { fromServer: true, cache: true, upload: false })
   }
 
-  const serverEmpty = snap.status === 'empty'
-  if (local && hasHouseholdData(local)) {
-    return finishLoadedState(local, {
-      fromStorage: true,
+  if (snap.status === 'empty') {
+    const state = createInitialState()
+    return finishLoadedState(state, {
       fromServer: false,
-      upload: serverEmpty,
+      seeded: true,
+      cache: true,
+      upload: true,
       allMonths: true,
-      uploadBlocked: !serverEmpty,
     })
   }
 
-  if (!serverEmpty) {
-    const state = createInitialState()
-    finalizeState(state)
-    return {
-      state,
-      fromStorage: false,
-      fromServer: false,
-      uploadBlocked: true,
-    }
-  }
-
-  const state = createInitialState()
-  return finishLoadedState(state, {
-    fromStorage: false,
-    fromServer: false,
-    upload: true,
-    allMonths: true,
-  })
+  throw householdLoadError(snap.status)
 }
 
 export function importStateFromText(raw) {
@@ -698,6 +697,7 @@ export function importStateFromText(raw) {
 }
 
 export function saveState(state) {
+  // Read-only cache of the last successful GET. loadHousehold never PUTs this.
   normalizeState(state)
   state.version = CURRENT_VERSION
   state.currentMonth = pickCurrentMonth(state)

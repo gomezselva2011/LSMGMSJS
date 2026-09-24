@@ -26,7 +26,7 @@ Las contraseñas **no van en el repositorio**. Al crear una base vacía:
 
 Un admin puede crear un tercer perfil de **solo lectura** (`viewer` / usuario). Ese perfil ve Presupuesto y Analítica, pero no puede añadir, editar, arrastrar, guardar, descargar copia ni restaurar. El servidor rechaza cada escritura (no solo la interfaz).
 
-El presupuesto vive en SQLite en el servidor (`data/gastos.sqlite`) y también en `localStorage`. Las tablas cubren meses, ingresos, categorías, gastos, subgastos (charges), detalles, usuarios y sesiones. Si existe un `data/gastos.json` de una versión anterior, se importa a SQLite al arrancar. **Guardar** y cada edición (solo **admin**) escriben las dos copias. Un perfil de **solo lectura** (`viewer`) puede ver Presupuesto y Analítica, pero no añadir, editar, arrastrar ni guardar.
+El presupuesto vive en SQLite en el servidor (`data/gastos.sqlite`). Al entrar y al cambiar de mes se carga **siempre** desde `/api/gastos`; el navegador no es la fuente de verdad. `localStorage` solo puede guardar una copia de solo lectura **después** de un GET exitoso; nunca se usa para PUT ni para resembrar. Las tablas cubren meses, ingresos, categorías, gastos, subgastos (charges), detalles, usuarios y sesiones. Si existe un `data/gastos.json` de una versión anterior, se importa a SQLite al arrancar. **Guardar** y cada edición con sentido (solo **admin**) escriben el mes abierto en SQLite (`saveScope: current`, para no borrar otros meses). Un perfil de **solo lectura** (`viewer`) puede ver Presupuesto y Analítica, pero no añadir, editar, arrastrar ni guardar.
 
 `/data/`, los `.sqlite` y el código de `server/` no se sirven por HTTP. En el pie un admin autenticado puede **Descargar copia** o **Restaurar desde archivo**.
 
@@ -54,7 +54,7 @@ Un admin puede crear un tercer perfil (nombre, usuario, contraseña y rol admin 
 - Totales del mes: ingresos, gastos y balance
 - Cada mes se guarda aparte. **Crear noviembre** copia el mes abierto hacia adelante; **Crear septiembre** (desde octubre) lo copia hacia atrás. Ingresos, gastos, cargos, layouts, estados y rubros se clonan; las fechas pasan al mes nuevo. Desde septiembre, **Crear agosto**, y así. Si el mes ya existe, el botón se oculta.
 - Navegación entre los meses que ya existen
-- Estados vacío, de carga y de error (datos dañados o almacenamiento bloqueado)
+- Estados vacío, de carga y de error (si el servidor no responde se muestra error y Reintentar; no se usa una copia local)
 - Escritorio y teléfono
 
 ## Restaurar

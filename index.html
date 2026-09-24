@@ -53,8 +53,10 @@
           onerror="lmPhotoErr(this)"
         />
         <p class="boot-kicker">Gastos del hogar</p>
-        <h1>Cargando el presupuesto…</h1>
-        <p>Melissa y Lenin</p>
+        <h1 id="boot-title">Cargando desde el servidor…</h1>
+        <p id="boot-copy">Melissa y Lenin</p>
+        <p id="boot-error" class="boot-hint" hidden></p>
+        <button type="button" class="btn btn-primary btn-cta" id="boot-retry" hidden>Reintentar</button>
       </article>
     </div>
 
@@ -249,8 +251,8 @@
         <footer class="foot">
           <div class="foot-main">
             <p id="save-note">
-              Los cambios se guardan en el servidor de esta app y también en este navegador. Una ventana
-              nueva en la misma dirección verá lo último que guardaste.
+              Los cambios se guardan en el servidor. Recarga o entra de nuevo y verás lo último que quedó en
+              la base de datos.
             </p>
             <div class="foot-actions">
               <button type="button" class="btn btn-ghost admin-only" id="download-backup">Descargar copia</button>

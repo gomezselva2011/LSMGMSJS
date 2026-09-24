@@ -12,13 +12,12 @@ import {
   LAYOUT_HALF,
   looksLikeCardName,
   normalizeDetails,
+  HouseholdLoadError,
   queueServerSave,
   reorderCategories,
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
-  saveState,
   setHouseholdWritesEnabled,
-  storageAvailable,
   flushServerSave,
   importStateFromText,
   loadHousehold,
@@ -64,6 +63,10 @@ import {
 import { bindExpenseHoverSnippet } from './hover-snippet.js'
 
 const bootEl = document.querySelector('#boot')
+const bootTitleEl = document.querySelector('#boot-title')
+const bootCopyEl = document.querySelector('#boot-copy')
+const bootErrorEl = document.querySelector('#boot-error')
+const bootRetryEl = document.querySelector('#boot-retry')
 const fatalEl = document.querySelector('#fatal')
 const fatalMessage = document.querySelector('#fatal-message')
 const appEl = document.querySelector('#app')
@@ -104,6 +107,10 @@ let longPressStart = null
 let currentUser = null
 let authRequired = false
 let overdueAlertShown = false
+let budgetLoading = false
+let lastServerLoad = { isBoot: true }
+const FLUSH_WAIT_MS = 4000
+const SERVER_LOADING_COPY = 'Cargando desde el servidor…'
 const expandedSubgastoIds = new Set()
 const DRAG_MIME = 'application/x-gastos-expense'
 const CATEGORY_MIME = 'application/x-gastos-category'
@@ -175,29 +182,20 @@ function applySessionChrome() {
   const saveNote = document.querySelector('#save-note')
   if (saveNote) {
     saveNote.textContent = canEdit()
-      ? 'Los cambios se guardan en el servidor de esta app y también en este navegador. Una ventana nueva en la misma dirección verá lo último que guardaste.'
+      ? 'Los cambios se guardan en el servidor. Recarga o entra de nuevo y verás lo último que quedó en la base de datos.'
       : 'Estás viendo el presupuesto. Un perfil de solo lectura no puede añadir, editar, arrastrar ni guardar.'
   }
 }
 
 function persist(options) {
-  let localOk = false
-  try {
-    saveState(state)
-    localOk = true
-    persistEnabled = true
-  } catch (error) {
-    persistEnabled = false
-    console.error(error)
+  if (!canEdit()) {
+    persistWarning = 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
+    renderBanner()
+    return false
   }
-  if (canEdit()) queueServerSave(state, options)
-  persistWarning = localOk
-    ? ''
-    : canEdit()
-      ? 'No se pudo guardar en este navegador. Se está escribiendo en el servidor de la app.'
-      : 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
-  renderBanner()
-  return canEdit() && localOk
+  persistEnabled = true
+  queueServerSave(state, options)
+  return true
 }
 
 function showToast(message) {
@@ -216,13 +214,14 @@ async function saveNow() {
   persist()
   try {
     await flushServerSave()
+    persistWarning = ''
+    renderBanner()
     showToast('Guardado')
   } catch (error) {
     console.error(error)
-    persistWarning =
-      'Guardado en este navegador, pero el servidor no respondió. Abre la misma dirección para no perder los cambios.'
+    persistWarning = 'No se pudo guardar en el servidor. Reintenta con Guardar.'
     renderBanner()
-    showToast('Guardado en este navegador')
+    showToast('No se pudo guardar')
   }
 }
 
@@ -273,12 +272,10 @@ function monthExists(monthKey) {
 }
 
 function goToMonth(monthKey) {
-  if (!monthExists(monthKey)) return
+  if (!state?.months?.[monthKey] && !budgetLoading) return
   persistWarning = persistEnabled ? '' : persistWarning
   expandedSubgastoIds.clear()
-  state.currentMonth = monthKey
-  persist()
-  render()
+  loadBudgetFromServer({ selectMonth: monthKey }).catch((error) => console.error(error))
 }
 
 function renderSavedMonths() {
@@ -1142,7 +1139,7 @@ function onSubmitDetails(event) {
   }
   item.details = details
   if (!persist()) {
-    showDetailsError('No se pudieron guardar los detalles en este navegador.')
+    showDetailsError('No se pudieron guardar los detalles en el servidor.')
     return
   }
   showDetailsError('')
@@ -1580,6 +1577,7 @@ function createAdjacentMonth(delta) {
   const copy = () => {
     if (!copyMonthAdjacent(state, delta, fromKey)) return
     persist()
+    flushServerSave().catch((error) => console.error(error))
     render()
   }
 
@@ -2116,10 +2114,53 @@ function showFatal(message) {
   if (fatalMessage) fatalMessage.textContent = message
 }
 
-const BOOT_HOLD_MS = 5000
+function setBootMessage(title, copy) {
+  if (bootTitleEl) bootTitleEl.textContent = title
+  if (bootCopyEl) bootCopyEl.textContent = copy
+}
+
+function showServerLoading() {
+  budgetLoading = true
+  if (fatalEl) fatalEl.hidden = true
+  if (appEl) appEl.hidden = true
+  if (bootEl) {
+    bootEl.hidden = false
+    bootEl.classList.remove('boot-error')
+  }
+  setBootMessage(SERVER_LOADING_COPY, 'Melissa y Lenin')
+  if (bootErrorEl) {
+    bootErrorEl.hidden = true
+    bootErrorEl.textContent = ''
+  }
+  if (bootRetryEl) bootRetryEl.hidden = true
+}
+
+function showServerLoadError(error) {
+  budgetLoading = false
+  const message =
+    error instanceof Error
+      ? error.message
+      : 'No se pudo leer el presupuesto del servidor.'
+  if (fatalEl) fatalEl.hidden = true
+  if (appEl) appEl.hidden = true
+  if (bootEl) {
+    bootEl.hidden = false
+    bootEl.classList.add('boot-error')
+  }
+  setBootMessage('No se pudo cargar', 'El presupuesto vive en el servidor. Reintenta cuando esté listo.')
+  if (bootErrorEl) {
+    bootErrorEl.hidden = false
+    bootErrorEl.textContent = message
+  }
+  if (bootRetryEl) bootRetryEl.hidden = false
+}
 
 function revealApp() {
-  bootEl.hidden = true
+  budgetLoading = false
+  if (bootEl) {
+    bootEl.hidden = true
+    bootEl.classList.remove('boot-error')
+  }
   fatalEl.hidden = true
   appEl.hidden = false
   render()
@@ -2128,21 +2169,6 @@ function revealApp() {
 
 function showApp() {
   try {
-    if (bootEl && !bootEl.hidden) {
-      window.setTimeout(() => {
-        try {
-          revealApp()
-        } catch (error) {
-          console.error(error)
-          showFatal(
-            error instanceof Error
-              ? error.message
-              : 'No se pudo mostrar el presupuesto en este navegador.',
-          )
-        }
-      }, BOOT_HOLD_MS)
-      return
-    }
     revealApp()
   } catch (error) {
     console.error(error)
@@ -2151,6 +2177,50 @@ function showApp() {
         ? error.message
         : 'No se pudo mostrar el presupuesto en este navegador.',
     )
+  }
+}
+
+async function flushServerSaveBounded() {
+  if (!canEdit()) return
+  try {
+    await Promise.race([
+      flushServerSave(),
+      new Promise((_, reject) => {
+        window.setTimeout(() => reject(new Error('timeout')), FLUSH_WAIT_MS)
+      }),
+    ])
+  } catch {
+    // Never hold the spinner on a stuck PUT.
+  }
+}
+
+async function loadBudgetFromServer({ selectMonth, isBoot = false } = {}) {
+  if (budgetLoading && !isBoot) return false
+  lastServerLoad = { selectMonth, isBoot }
+  showServerLoading()
+  try {
+    if (!isBoot) await flushServerSaveBounded()
+    const loaded = await loadHousehold()
+    state = loaded.state
+    if (selectMonth && state.months?.[selectMonth]) {
+      state.currentMonth = selectMonth
+      if (canEdit()) queueServerSave(state)
+    }
+    persistWarning = ''
+    persistEnabled = true
+    if (authRequired && !canEdit()) {
+      persistWarning = 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
+    }
+    showApp()
+    return true
+  } catch (error) {
+    console.error(error)
+    if (error instanceof HouseholdLoadError && error.status === 'unauthorized' && authRequired) {
+      window.location.replace('/login')
+      return false
+    }
+    showServerLoadError(error)
+    return false
   }
 }
 
@@ -2170,7 +2240,7 @@ async function fetchMe() {
 
 async function logout() {
   try {
-    await flushServerSave()
+    await flushServerSaveBounded()
   } catch (error) {
     console.error(error)
   }
@@ -2287,6 +2357,9 @@ function bindEvents() {
   document.querySelector('#download-backup')?.addEventListener('click', downloadBackup)
   document.querySelector('#restore-file')?.addEventListener('click', restoreFromFile)
   document.querySelector('#restore-file-input')?.addEventListener('change', onRestoreFileChange)
+  document.querySelector('#boot-retry')?.addEventListener('click', () => {
+    loadBudgetFromServer(lastServerLoad).catch((error) => console.error(error))
+  })
   document.querySelector('#account-open')?.addEventListener('click', () => {
     openAccountDialog().catch((error) => console.error(error))
   })
@@ -2306,9 +2379,10 @@ function bindEvents() {
   })
   document.querySelector('#fatal-restore').addEventListener('click', () => {
     if (!canEdit()) return
-    state = restoreOctoberPreservingOthers()
-    persistEnabled = storageAvailable()
+    state = restoreOctoberPreservingOthers(state)
+    persistEnabled = true
     persist({ allMonths: true })
+    flushServerSave().catch((error) => console.error(error))
     showApp()
   })
   appEl.addEventListener('click', onAppClick)
@@ -2426,7 +2500,7 @@ function bindEvents() {
 async function start() {
   try {
     bindEvents()
-    persistEnabled = storageAvailable()
+    persistEnabled = true
     await readSession()
     if (authRequired && !currentUser) {
       window.location.replace('/login')
@@ -2434,22 +2508,13 @@ async function start() {
     }
     setHouseholdWritesEnabled(canEdit())
     applySessionChrome()
-    const loaded = await loadHousehold()
-    state = loaded.state
-    if (loaded.uploadBlocked) {
-      setHouseholdWritesEnabled(false)
-      persistWarning =
-        'No se pudo leer el presupuesto del servidor. No se guarda en este momento para no borrar octubre.'
-    } else if (!persistEnabled) {
-      persistWarning = loaded.fromServer
-        ? 'Este navegador no guarda una copia local. Los cambios se escriben en el servidor de la app.'
-        : 'Este navegador no permite guardar datos locales. Se intentará usar el servidor de la app.'
-    } else if (authRequired && !canEdit()) {
-      persistWarning = 'Estás viendo el presupuesto. Los cambios no se guardan con un perfil de solo lectura.'
-    }
-    showApp()
+    await loadBudgetFromServer({ isBoot: true })
   } catch (error) {
     console.error(error)
+    if (error instanceof HouseholdLoadError) {
+      showServerLoadError(error)
+      return
+    }
     showFatal(
       error instanceof Error
         ? error.message
