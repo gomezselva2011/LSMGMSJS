@@ -42,6 +42,9 @@ const {
   importStateFromText,
   cloneMonth,
   copyMonthAdjacent,
+  queueServerSave,
+  flushServerSave,
+  monthHasExpenses,
   GASTOS_API_PATH,
 } = await import('./storage.js')
 
@@ -332,6 +335,7 @@ describe('loadHousehold server store', () => {
       if (method === 'GET') {
         return {
           ok: true,
+          status: 200,
           async json() {
             return stored ?? {}
           },
@@ -341,9 +345,9 @@ describe('loadHousehold server store', () => {
         const body = JSON.parse(String(opts.body))
         puts.push(body)
         stored = body
-        return { ok: true, async json() { return { ok: true } } }
+        return { ok: true, status: 200, async json() { return { ok: true } } }
       }
-      return { ok: false, async json() { return {} } }
+      return { ok: false, status: 405, async json() { return {} } }
     }
   })
 
@@ -356,11 +360,8 @@ describe('loadHousehold server store', () => {
     assert.equal(seedCard.charges.length, 0)
     assert.equal(card.charges.length, 2)
     assert.equal(card.charges[0].name, 'Lentes')
-    assert.equal(puts.length >= 1, true)
-    assert.equal(
-      puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges.length,
-      2,
-    )
+    assert.equal(puts.length, 0)
+    assert.equal(monthHasExpenses(loaded.state.months[SEEDED_MONTH]), true)
   })
 
   it('seeds once when server and browser are empty, then writes the server file', async () => {
@@ -372,6 +373,7 @@ describe('loadHousehold server store', () => {
     assert.equal(card.charges.length, 0)
     assert.equal(puts.length >= 1, true)
     assert.equal(puts.at(-1).currentMonth, SEEDED_MONTH)
+    assert.equal(puts.at(-1).saveScope, 'all')
   })
 
   it('copies localStorage to the server when the server file is empty', async () => {
@@ -386,9 +388,71 @@ describe('loadHousehold server store', () => {
       puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').charges[1].name,
       'Celular',
     )
+    assert.equal(puts.at(-1).saveScope, 'all')
   })
 
-  it('PUT uses currentMonth as the save key when November is open', async () => {
+  it('after login, sqlite October wins over stale seed localStorage and is not PUT back', async () => {
+    const edited = octoberWithCharges([LENTES, CELULAR])
+    const camioneta = edited.expenses.find((item) => item.id === 'exp-ot-camioneta')
+    camioneta.name = 'Himla PERSIST-TEST'
+    camioneta.amount = 62001
+    stored = {
+      version: 1,
+      currentMonth: SEEDED_MONTH,
+      months: { [SEEDED_MONTH]: edited },
+    }
+    saveState(createInitialState())
+    const loaded = await loadHousehold()
+    const row = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-camioneta')
+    const seedRow = createOctoberSeed().expenses.find((item) => item.id === 'exp-ot-camioneta')
+    assert.equal(loaded.fromServer, true)
+    assert.equal(row.name, 'Himla PERSIST-TEST')
+    assert.equal(row.amount, 62001)
+    assert.equal(seedRow.name, 'Mensualidad camioneta')
+    assert.equal(puts.length, 0)
+    const local = JSON.parse(window.localStorage.getItem(STORAGE_KEY))
+    const localRow = local.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-camioneta')
+    assert.equal(localRow.name, 'Himla PERSIST-TEST')
+  })
+
+  it('does not re-seed October when months[2026-10] already has expenses', async () => {
+    const edited = createOctoberSeed()
+    edited.expenses.find((item) => item.id === 'exp-ot-camioneta').name = 'Keep me'
+    stored = {
+      version: 1,
+      currentMonth: SEEDED_MONTH,
+      months: { [SEEDED_MONTH]: edited },
+    }
+    const loaded = await loadHousehold()
+    assert.equal(
+      loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-camioneta').name,
+      'Keep me',
+    )
+    assert.equal(puts.length, 0)
+  })
+
+  it('does not upload the October seed when GET /api/gastos is 401', async () => {
+    window.fetch = async (url, opts = {}) => {
+      assert.equal(String(url).split('?')[0], GASTOS_API_PATH)
+      const method = String(opts.method || 'GET').toUpperCase()
+      if (method === 'GET') {
+        return { ok: false, status: 401, async json() { return { error: 'Inicia sesión.' } } }
+      }
+      if (method === 'PUT' || method === 'POST') {
+        const body = JSON.parse(String(opts.body))
+        puts.push(body)
+        return { ok: true, status: 200, async json() { return { ok: true } } }
+      }
+      return { ok: false, status: 405, async json() { return {} } }
+    }
+    const loaded = await loadHousehold()
+    assert.equal(loaded.fromServer, false)
+    assert.equal(loaded.uploadBlocked, true)
+    assert.equal(puts.length, 0)
+    assert.equal(monthHasExpenses(loaded.state.months[SEEDED_MONTH]), true)
+  })
+
+  it('queueServerSave uses currentMonth as the save key when November is open', async () => {
     const october = octoberWithCharges([LENTES])
     const november = octoberWithCharges([CELULAR])
     november.expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount = 90000
@@ -402,6 +466,9 @@ describe('loadHousehold server store', () => {
     }
     const loaded = await loadHousehold()
     assert.equal(loaded.state.currentMonth, '2026-11')
+    assert.equal(puts.length, 0)
+    await queueServerSave(loaded.state)
+    await flushServerSave()
     assert.equal(puts.at(-1).currentMonth, '2026-11')
     assert.equal(puts.at(-1).saveScope, 'current')
     assert.equal(

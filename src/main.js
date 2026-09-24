@@ -2170,6 +2170,11 @@ async function fetchMe() {
 
 async function logout() {
   try {
+    await flushServerSave()
+  } catch (error) {
+    console.error(error)
+  }
+  try {
     await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
   } catch {
     // Still send Melissa back to login.
@@ -2397,6 +2402,14 @@ function bindEvents() {
     getRate: () => currentMonth()?.exchangeRate,
     isActive: () => currentView === 'budget',
   })
+  const flushOnLeave = () => {
+    if (!canEdit()) return
+    flushServerSave().catch((error) => console.error(error))
+  }
+  window.addEventListener('pagehide', flushOnLeave)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushOnLeave()
+  })
   closeOnBackdrop(formDialog)
   closeOnBackdrop(confirmDialog)
   closeOnBackdrop(detailsDialog)
@@ -2423,7 +2436,11 @@ async function start() {
     applySessionChrome()
     const loaded = await loadHousehold()
     state = loaded.state
-    if (!persistEnabled) {
+    if (loaded.uploadBlocked) {
+      setHouseholdWritesEnabled(false)
+      persistWarning =
+        'No se pudo leer el presupuesto del servidor. No se guarda en este momento para no borrar octubre.'
+    } else if (!persistEnabled) {
       persistWarning = loaded.fromServer
         ? 'Este navegador no guarda una copia local. Los cambios se escriben en el servidor de la app.'
         : 'Este navegador no permite guardar datos locales. Se intentará usar el servidor de la app.'

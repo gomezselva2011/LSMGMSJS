@@ -483,6 +483,10 @@ export function hasHouseholdData(state) {
   return Object.keys(months).some((key) => isMonthKey(key) && isPlainObject(months[key]))
 }
 
+export function monthHasExpenses(month) {
+  return Array.isArray(month?.expenses) && month.expenses.length > 0
+}
+
 function finalizeState(state) {
   normalizeState(state)
   state.currentMonth = pickCurrentMonth(state)
@@ -551,25 +555,31 @@ export function setHouseholdWritesEnabled(enabled) {
   householdWritesEnabled = Boolean(enabled)
 }
 
-export async function fetchServerState() {
-  if (!canTalkToServer()) return null
+async function fetchServerSnapshot() {
+  if (!canTalkToServer()) return { status: 'unavailable', state: null }
   try {
     const res = await window.fetch(GASTOS_API_PATH, { cache: 'no-store', credentials: 'same-origin' })
-    if (!res.ok) return null
+    if (res.status === 401 || res.status === 403) return { status: 'unauthorized', state: null }
+    if (!res.ok) return { status: 'error', state: null }
     const parsed = await res.json()
     const coerced = coerceState(parsed)
-    if (!coerced || !hasHouseholdData(coerced)) return null
-    return finalizeState(coerced)
+    if (!coerced || !hasHouseholdData(coerced)) return { status: 'empty', state: null }
+    return { status: 'ok', state: finalizeState(coerced) }
   } catch {
-    return null
+    return { status: 'error', state: null }
   }
+}
+
+export async function fetchServerState() {
+  const snap = await fetchServerSnapshot()
+  return snap.status === 'ok' ? snap.state : null
 }
 
 let pendingServerPayload = null
 let serverSaveTimer = 0
 
 export function queueServerSave(state, options = {}) {
-  if (!householdWritesEnabled || !state || !canTalkToServer()) return
+  if (!householdWritesEnabled || !state || !canTalkToServer()) return Promise.resolve()
   normalizeState(state)
   const currentMonth = pickCurrentMonth(state)
   state.currentMonth = currentMonth
@@ -579,13 +589,13 @@ export function queueServerSave(state, options = {}) {
     saveScope: options.allMonths ? 'all' : 'current',
   })
   if (typeof window.setTimeout !== 'function') {
-    flushServerSave().catch((error) => console.error(error))
-    return
+    return flushServerSave()
   }
   window.clearTimeout(serverSaveTimer)
   serverSaveTimer = window.setTimeout(() => {
     flushServerSave().catch((error) => console.error(error))
   }, 250)
+  return Promise.resolve()
 }
 
 export async function flushServerSave() {
@@ -613,42 +623,69 @@ async function finishLoadedState(state, flags) {
   try {
     saveState(state)
   } catch {
-    // localStorage may be blocked; the server copy is still written below.
+    // localStorage may be blocked; sqlite remains the source of truth after login.
   }
-  queueServerSave(state)
-  const waitForFlush = !flags.fromServer && !flags.fromStorage
-  if (waitForFlush) {
+  if (flags.upload) {
     try {
+      await queueServerSave(state, flags.allMonths ? { allMonths: true } : {})
       await flushServerSave()
     } catch (error) {
       console.error(error)
     }
-  } else {
-    flushServerSave().catch((error) => console.error(error))
   }
-  return { state, ...flags }
+  return {
+    state,
+    fromStorage: Boolean(flags.fromStorage),
+    fromServer: Boolean(flags.fromServer),
+    uploadBlocked: Boolean(flags.uploadBlocked),
+  }
 }
 
 export async function loadHousehold() {
-  const server = await fetchServerState()
+  const snap = await fetchServerSnapshot()
   let local = null
   try {
     local = readLocalState().state
   } catch (error) {
-    if (!server) throw error
+    if (snap.status !== 'ok') throw error
   }
 
-  if (server) {
-    const merged = local ? mergeStates(server, local) : server
-    return finishLoadedState(merged, { fromStorage: Boolean(local), fromServer: true })
+  if (snap.status === 'ok' && snap.state) {
+    // After login, sqlite is the source of truth. Do not merge stale/empty
+    // localStorage on top, and do not PUT the browser copy back — that path
+    // used to reseed October or wipe month_key 2026-10.
+    return finishLoadedState(snap.state, { fromServer: true, fromStorage: false, upload: false })
   }
 
-  if (local) {
-    return finishLoadedState(local, { fromStorage: true, fromServer: false })
+  const serverEmpty = snap.status === 'empty'
+  if (local && hasHouseholdData(local)) {
+    return finishLoadedState(local, {
+      fromStorage: true,
+      fromServer: false,
+      upload: serverEmpty,
+      allMonths: true,
+      uploadBlocked: !serverEmpty,
+    })
+  }
+
+  if (!serverEmpty) {
+    const state = createInitialState()
+    finalizeState(state)
+    return {
+      state,
+      fromStorage: false,
+      fromServer: false,
+      uploadBlocked: true,
+    }
   }
 
   const state = createInitialState()
-  return finishLoadedState(state, { fromStorage: false, fromServer: false })
+  return finishLoadedState(state, {
+    fromStorage: false,
+    fromServer: false,
+    upload: true,
+    allMonths: true,
+  })
 }
 
 export function importStateFromText(raw) {
