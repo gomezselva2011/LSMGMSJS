@@ -41,7 +41,7 @@ export async function readGastosFile(filePath, options = {}) {
 
 export async function writeGastosFile(filePath, data, options = {}) {
   const db = await ensureGastosDb(dbOptionsFrom(filePath, options))
-  writeHouseholdState(db, data)
+  await writeHouseholdState(db, data)
 }
 
 function sendJson(res, status, body) {
@@ -100,7 +100,7 @@ export async function handleGastosApi(req, res, next, options = {}) {
     const db = await ensureGastosDb(dbOptions)
 
     if (req.method === 'GET') {
-      const data = readHouseholdState(db)
+      const data = await readHouseholdState(db)
       sendJson(res, 200, data)
       return true
     }
@@ -118,7 +118,7 @@ export async function handleGastosApi(req, res, next, options = {}) {
         sendJson(res, 400, { error: 'El cuerpo tiene que ser un objeto JSON' })
         return true
       }
-      writeHouseholdState(db, parsed)
+      await writeHouseholdState(db, parsed)
       sendJson(res, 200, { ok: true })
       return true
     }

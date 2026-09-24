@@ -342,16 +342,16 @@ export function createAuthStore(options = {}) {
 
   async function load() {
     const db = await ensureGastosDb(dbOptions)
-    users = listDbUsers(db)
-    sessions = listDbSessions(db)
+    users = await listDbUsers(db)
+    sessions = await listDbSessions(db)
   }
 
   async function saveUsers() {
-    replaceUsers(openGastosDb(dbOptions), users)
+    await replaceUsers(await openGastosDb(dbOptions), users)
   }
 
   async function saveSessions() {
-    replaceSessions(openGastosDb(dbOptions), sessions)
+    await replaceSessions(await openGastosDb(dbOptions), sessions)
   }
 
   async function seedUser(seed) {

@@ -58,7 +58,7 @@ describe('sqlite household db', () => {
     )
 
     const db = await ensureGastosDb({ root })
-    const state = readHouseholdState(db)
+    const state = await readHouseholdState(db)
     assert.equal(state.currentMonth, '2026-10')
     assert.equal(state.months['2026-10'].expenses[0].charges[0].name, 'Lentes')
     assert.equal(state.months['2026-10'].expenses[0].details.accountNumber, '123')
@@ -87,7 +87,7 @@ describe('sqlite household db', () => {
       })}\n`,
     )
     const db = await ensureGastosDb({ root })
-    const users = listUsers(db)
+    const users = await listUsers(db)
     assert.equal(users.length, 1)
     assert.equal(users[0].username, 'invitada')
     assert.equal(users[0].role, 'viewer')
@@ -96,8 +96,8 @@ describe('sqlite household db', () => {
   it('keeps expense + subgasto after closing and reopening the file', async () => {
     const root = await tmpRoot()
     const dbPath = path.join(root, 'data', 'gastos.sqlite')
-    const db = openGastosDb({ dbPath })
-    writeHouseholdState(db, {
+    const db = await openGastosDb({ dbPath })
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-11',
       months: {
@@ -113,7 +113,7 @@ describe('sqlite household db', () => {
       },
     })
     closeGastosDb(dbPath)
-    const again = readHouseholdState(openGastosDb({ dbPath }))
+    const again = await readHouseholdState(await openGastosDb({ dbPath }))
     assert.equal(again.months['2026-11'].expenses[0].charges[0].name, 'Subgasto persistente')
     assert.equal(again.months['2026-11'].expenses[0].charges[0].amount, 1500)
   })
@@ -143,8 +143,8 @@ describe('sqlite household db', () => {
   it('keeps currentMonth as the written month_key and does not rewrite other months', async () => {
     const root = await tmpRoot()
     const dbPath = path.join(root, 'data', 'gastos.sqlite')
-    const db = openGastosDb({ dbPath })
-    writeHouseholdState(db, {
+    const db = await openGastosDb({ dbPath })
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-10',
       months: { '2026-10': octoberFixture() },
@@ -159,7 +159,7 @@ describe('sqlite household db', () => {
     november.exchangeRate = 40
     november.categories[0].layout = 'half'
 
-    writeHouseholdState(db, {
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-11',
       saveScope: 'current',
@@ -169,7 +169,7 @@ describe('sqlite household db', () => {
       },
     })
 
-    const again = readHouseholdState(db)
+    const again = await readHouseholdState(db)
     assert.equal(again.currentMonth, '2026-11')
     assert.deepEqual(Object.keys(again.months).sort(), ['2026-10', '2026-11'])
     assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
@@ -189,14 +189,14 @@ describe('sqlite household db', () => {
   it('copies Crear septiembre into 2026-09 only', async () => {
     const root = await tmpRoot()
     const dbPath = path.join(root, 'data', 'gastos.sqlite')
-    const db = openGastosDb({ dbPath })
-    writeHouseholdState(db, {
+    const db = await openGastosDb({ dbPath })
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-10',
       months: { '2026-10': octoberFixture() },
     })
     const dirtyOctober = octoberFixture({ amount: 1 })
-    writeHouseholdState(db, {
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-09',
       months: {
@@ -204,7 +204,7 @@ describe('sqlite household db', () => {
         '2026-10': dirtyOctober,
       },
     })
-    const again = readHouseholdState(db)
+    const again = await readHouseholdState(db)
     assert.equal(again.currentMonth, '2026-09')
     assert.equal(again.months['2026-09'].expenses[0].paymentStatus, 'paid')
     assert.equal(again.months['2026-10'].expenses[0].amount, 80000)
@@ -214,19 +214,19 @@ describe('sqlite household db', () => {
   it('current-scope write of only September does not delete October', async () => {
     const root = await tmpRoot()
     const dbPath = path.join(root, 'data', 'gastos.sqlite')
-    const db = openGastosDb({ dbPath })
-    writeHouseholdState(db, {
+    const db = await openGastosDb({ dbPath })
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-10',
       months: { '2026-10': octoberFixture() },
     })
-    writeHouseholdState(db, {
+    await writeHouseholdState(db, {
       version: 1,
       currentMonth: '2026-09',
       saveScope: 'current',
       months: { '2026-09': octoberFixture({ amount: 80000, paymentStatus: 'paid' }) },
     })
-    const again = readHouseholdState(db)
+    const again = await readHouseholdState(db)
     assert.deepEqual(Object.keys(again.months).sort(), ['2026-09', '2026-10'])
     assert.equal(again.currentMonth, '2026-09')
     assert.equal(again.months['2026-09'].expenses[0].paymentStatus, 'paid')
@@ -244,8 +244,8 @@ describe('sqlite household db', () => {
     try {
       const { resolveDbPath } = await import('./db.js')
       assert.equal(resolveDbPath({}), dbPath)
-      const db = openGastosDb({ dataDir })
-      writeHouseholdState(db, {
+      const db = await openGastosDb({ dataDir })
+      await writeHouseholdState(db, {
         version: 1,
         currentMonth: '2026-10',
         months: { '2026-10': { expenses: [{ id: 'exp-disk', name: 'Disco', amount: 1 }] } },

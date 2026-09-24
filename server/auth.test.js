@@ -189,7 +189,7 @@ describe('auth store and HTTP', () => {
     assert.equal(users[1].name, 'Lenin')
     assert.equal(users[1].role, 'admin')
     assert.equal(users[1].canEdit, true)
-    const rows = listUsers(openGastosDb({ dbPath: store.dbPath }))
+    const rows = await listUsers(await openGastosDb({ dbPath: store.dbPath }))
     for (const user of rows) {
       assert.equal('password' in user, false)
       assert.match(user.passwordHash, /^scrypt:[0-9a-f]+:[0-9a-f]+$/)
@@ -411,7 +411,7 @@ describe('auth store and HTTP', () => {
     )
     assert.equal(forwarded, false)
     assert.equal(res.statusCode, 200)
-    const onDisk = readHouseholdState(openGastosDb({ dbPath }))
+    const onDisk = await readHouseholdState(await openGastosDb({ dbPath }))
     assert.equal(onDisk.currentMonth, '2026-10')
   })
 

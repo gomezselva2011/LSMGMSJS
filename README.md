@@ -67,4 +67,4 @@ En el pie de página, **Restaurar octubre 2026** vuelve a cargar el presupuesto 
 
 ## Hosting permanente
 
-Hace falta un proceso Node (no un static site) y un **disco persistente** para SQLite. Render Free no monta disco. Pasos, costes y cómo subir `gastos.sqlite`: [docs/hosting-gratis.md](docs/hosting-gratis.md).
+La app tiene que vivir **fuera de la VM del Cloud Agent** (esa máquina se borra). Camino gratis: **Turso** (datos) + **Render Free** (Node). Render no es el agente: es otro ordenador en la nube. Hace falta **Create repo** en GitHub; sin eso Render no ve el código. Pasos: [docs/hosting-gratis.md](docs/hosting-gratis.md). No copies contraseñas ni tokens al repositorio. No uses trycloudflare como hosting permanente.

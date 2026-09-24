@@ -1,0 +1,37 @@
+# Blueprint Render Free + Turso (datos persistentes, disco efímero OK).
+#
+# Render Free NO puede montar disco. Esta variante guarda meses, gastos,
+# usuarios y sesiones en Turso (libSQL). El contenedor puede dormirse:
+# los datos siguen en Turso, no en el filesystem de Render.
+#
+# Este archivo NO es el Blueprint por defecto (ese es render.yaml = Starter + disco).
+# En Render: New → Blueprint → elige este archivo, o crea un Web Service Free a mano
+# con las mismas build/start/env (ver docs/hosting-gratis.md).
+#
+# Hace falta un repo de GitHub (Create repo en Cursor). Origin/agent_temp no sirve.
+# Melissa pone TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en el dashboard de Render.
+# No hay URL onrender.com hasta que ella despliegue.
+
+services:
+  - type: web
+    name: gastos-hogar
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GASTOS_ADMIN_PASSWORD
+        sync: false
+      - key: GASTOS_ADMIN2_PASSWORD
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

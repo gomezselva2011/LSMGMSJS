@@ -1,12 +1,114 @@
 # Hosting permanente de Gastos del hogar
 
-Este runbook es para Melissa. El túnel actual (`https://highs-voting-finance-preferred.trycloudflare.com`) solo vive mientras la máquina Cloud Agent esté encendida. El presupuesto está en SQLite (`data/gastos.sqlite`), un archivo que **no está en git**. Si esa VM se borra, se pierde la base salvo que la hayas copiado a un disco persistente.
+## Sacar la app de la VM del agente
 
-No hay una URL `https://gastos-hogar.onrender.com` hasta que *tú* crees el servicio en Render y el deploy termine. El patrón, cuando exista, es `https://NOMBRE.onrender.com`.
+Melissa: **esta computadora (Cloud Agent VM) no sirve como casa permanente.** El disco es efímero. Si el agente se apaga o se borra, se acaba el túnel y se pierde `data/gastos.sqlite` (ese archivo no está en git).
+
+Hay que dejar **la app y los datos en la nube**, no en tu PC (tú no vas a hospedar en casa) y no en el agente.
+
+**Render no es la computadora del agente.** Son máquinas distintas. El agente es el entorno de Cursor. Render es un PaaS donde corre `npm start`. Turso es otra nube otra vez: ahí vive el SQLite remoto (libSQL).
+
+No uses trycloudflare como hosting permanente. El túnel actual (`https://highs-voting-finance-preferred.trycloudflare.com`) solo vive mientras el agente esté encendido. **No abras otro túnel.**
+
+No hay una URL `https://gastos-hogar.onrender.com` hasta que *tú* crees el servicio en Render y el deploy termine. El patrón, cuando exista, es `https://NOMBRE.onrender.com`. Copia la URL real del dashboard.
+
+### Tres caminos
+
+| Camino | Coste | Dónde viven los datos | Dónde corre Node | Tarjeta |
+| --- | --- | --- | --- | --- |
+| **A. Turso + Render Free** (recomendado, gratis) | 0 USD | Turso (libSQL, ~5 GB, persiste) | Render Free (disco **efímero**, da igual) | **No** (Turso Free y Render Hobby/Free) |
+| **B. Render Starter + disco 1 GB** | ~7,25 USD/mes | Archivo `gastos.sqlite` en `/var/data` | Render Starter 24/7 | **Sí** |
+| **C. Oracle Cloud Always Free** (VM propia) | 0 USD de compute Always Free | Disco / block volume en la VM (el stack actual, sin Turso) | Tu VM Ampere o AMD | **Sí, de verificación** (Oracle no cobra si no actualizas a pago; ver §6) |
+
+**Recomendación:** camino A. El código ya habla con Turso si existen `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`. En el portátil / `npm run dev` sin esas variables sigue usando `node:sqlite` en `data/gastos.sqlite`.
 
 ---
 
-## 1. Hechos (2026): Render Free no guarda SQLite
+## 0. GitHub: Create repo (obligatorio antes de Render)
+
+Render despliega desde **GitHub, GitLab o Bitbucket**. El remoto de la máquina del agente es Origin (`origin.cursor.com`, repo temporal tipo `agent_temp`). **Render no puede conectar eso.**
+
+1. En Cursor, **Create repo** (crear el repositorio en tu GitHub).
+2. Empujar esta rama o `main` a ese GitHub.
+3. Recién entonces Render puede ver el código (`package.json`, `render-free-turso.yaml`, `render.yaml`).
+
+Si GitHub ya está conectado y el código está ahí, sáltate Create repo. Si no, **hazlo antes de abrir Render o Turso no va a desplegar la app**.
+
+Rama de trabajo en el agente: `cursor/gastos-hogar-05fc`. En GitHub puedes usar esa rama o fusionar a `main` y desplegar `main`.
+
+---
+
+## 1. Camino A — Turso + Render Free (pasos de Melissa)
+
+Turso Free (docs 2026, [turso.tech/pricing](https://turso.tech/pricing)): 0 USD, **sin tarjeta**, 100 bases, 5 GB, 500 M lecturas / 10 M escrituras al mes. Si te pasas en el plan Free, la base se bloquea; no hay cargo sorpresa.
+
+Render Free: 0 USD, **sin tarjeta** para Hobby/Free. Se duerme a los 15 min sin tráfico (~1 min al despertar). 750 h/mes. El disco del contenedor **se borra** en cada sleep/restart/deploy; por eso el presupuesto tiene que estar en Turso, no en un archivo.
+
+### 1.1 Cuenta y base en Turso
+
+1. Entra a [https://turso.tech](https://turso.tech) → Sign up (GitHub es lo más simple). Plan **Free**.
+2. Crea una base, por ejemplo `gastos-hogar` (el nombre da igual).
+3. Copia la URL de la base. Empieza por `libsql://…` (a veces también te dan `https://…`). Eso es `TURSO_DATABASE_URL`.
+4. Crea un token de esa base (dashboard → tokens / “Create token”). Eso es `TURSO_AUTH_TOKEN`. Trátalo como una contraseña: **no lo pongas en git, no lo pegues en el chat**.
+
+Equivalente con la CLI (opcional, si la instalas en tu PC o en otra máquina, no hace falta):
+
+```bash
+turso auth login
+turso db create gastos-hogar
+turso db show gastos-hogar --url
+turso db tokens create gastos-hogar
+```
+
+No hay URL pública de Turso que debas abrir en el navegador para usar la app. Turso solo habla con el proceso Node en Render.
+
+### 1.2 Web Service Free en Render
+
+1. [https://dashboard.render.com/register](https://dashboard.render.com/register) — “Sign up with GitHub”. **No** pidas plan de pago.
+2. Account Settings → autoriza GitHub si hace falta.
+3. **New** → **Web Service** → el repo de GitHub del paso 0 (no `origin.cursor.com`).
+4. Rama: `main` o `cursor/gastos-hogar-05fc`.
+5. Runtime: **Node**. Build: `npm ci && npm run build`. Start: `npm start`.
+6. Instance: **Free**. **No** añadas disco.
+7. Environment:
+
+   | Variable | Valor |
+   | --- | --- |
+   | `NODE_ENV` | `production` |
+   | `NODE_VERSION` | `22` |
+   | `SESSION_SECRET` | una cadena larga aleatoria (no es la clave de login; Render puede generarla) |
+   | `GASTOS_ADMIN_PASSWORD` | la de Melissa (`mgomez`) |
+   | `GASTOS_ADMIN2_PASSWORD` | la de Lenin (`lsotelon`) |
+   | `TURSO_DATABASE_URL` | la URL `libsql://…` |
+   | `TURSO_AUTH_TOKEN` | el token |
+
+   No hace falta `GASTOS_DATA_DIR`. El presupuesto va a Turso. Las fotos de perfil, si las subes, viven en el disco efímero de Render y **pueden desaparecer** al dormirse el Free; la marca L&M sigue saliendo.
+
+8. Deploy. Espera a “Live”. Copia `https://….onrender.com` del dashboard. Abre `/login`.
+
+**Opción Blueprint:** New → Blueprint → archivo `render-free-turso.yaml` (plan `free`, sin disco, mismas env). Te pedirá los secretos `sync: false`. El Blueprint `render.yaml` de la raíz es el camino **B** (Starter + disco); no lo uses si quieres Free.
+
+El primer arranque con Turso vacío crea `mgomez` y `lsotelon` con las contraseñas de las env. Si la base ya tiene esos usuarios, **no las cambia**.
+
+### 1.3 Pasar el presupuesto que hoy está en el agente
+
+El sqlite de esta VM **no viaja solo**. Después del primer login en Render:
+
+1. En la app actual (túnel del agente), entra como admin → pie → **Descargar copia** (JSON del mes / estado).
+2. En `https://….onrender.com`, entra con las contraseñas de las env → **Restaurar desde archivo**.
+3. Repite por cada mes que te importe. Lo que no descargues no viaja.
+
+Los hashes de contraseña del sqlite del agente no se copian en ese JSON. Mandan las env de Render. Si más adelante importas un dump SQL completo a Turso, entonces mandan los hashes de esa copia, no las env.
+
+### 1.4 Comprobar que persistió (Turso, no el disco de Render)
+
+1. Guarda un gasto de prueba, cierra sesión.
+2. En Render: **Manual Deploy** → Restart (o espera a que se duerma y vuelve a entrar).
+3. El gasto y el login tienen que seguir. Si volviste a usuarios semilla vacíos, `TURSO_*` no está bien puesto o el servicio está hablando con sqlite efímero.
+
+---
+
+## 2. Hechos (2026): Render Free no guarda un archivo SQLite
 
 Documentación de Render ([Deploy for Free](https://render.com/docs/free), [Persistent Disks](https://render.com/docs/disks), [Pricing](https://render.com/pricing)):
 
@@ -21,216 +123,201 @@ Documentación de Render ([Deploy for Free](https://render.com/docs/free), [Pers
 | Shell SSH en el dashboard | No | Sí (hace falta para subir el `.sqlite` a mano) |
 | Postgres Free | Caduca a los 30 días; no es SQLite | No lo usamos |
 
-**Conclusión:** no se puede tener “Render Free + archivo SQLite permanente”. Quien elija Free verá la app, pero cada vez que Render apague o redespliegue el servicio la base vuelve a nacer vacía (usuarios semilla otra vez, presupuesto perdido).
+**Conclusión:** no se puede tener “Render Free + archivo SQLite permanente”. Eso ya no es un problema si el estado está en Turso (camino A). Quien elija Free **sin** Turso verá la app, pero cada vez que Render apague el servicio la base local vuelve a nacer vacía.
 
-El `render.yaml` de este repo está pensado para **Starter + disco de 1 GB montado en `/var/data`**, con `GASTOS_DATA_DIR=/var/data`. Ahí es donde debe vivir `gastos.sqlite`. El código de la app (`/opt/render/project/src`) sigue siendo efímero; no dejes la base solo en `data/` del checkout.
-
----
-
-## 2. Alternativas si no quieres pagar ~7 USD
-
-Ningún PaaS “de un clic” para Node (cuentas nuevas, 2026) da **disco persistente de verdad a coste 0**:
-
-- **Fly.io:** el Hobby gratis ya no existe para cuentas nuevas. Prueba = 2 h de máquina o 7 días. Los volúmenes se cobran (~0,15 USD/GB/mes) y hay que poner tarjeta para seguir.
-- **Koyeb:** el instance Free **no puede** montar Volumes. Los volúmenes (preview) piden instance Standard de pago.
-- **Neon / Render Postgres:** persistiría datos, pero habría que **migrar de SQLite a Postgres**. No es el camino corto.
-- **Turso / libSQL (gratis, sin tarjeta, ~5 GB):** la base sí es persistente, pero el servidor usa hoy `node:sqlite` (archivo local). Pasar a Turso implica cambiar el cliente SQL. Es la mejor opción *gratis para los datos* si más adelante se reescribe esa capa. **No está hecha en este repo.**
-- **Cloudflare D1:** gratis para datos; obliga a Workers, no a este proceso Node + Vite.
-
-**Recomendación (cambio mínimo, mismo archivo SQLite):** Render Starter + disco 1 GB. Coste aproximado **7,25 USD/mes**. Tarjeta sí.
-
-Si solo quieres *probar* Render a 0 USD: Web Service Free, **sin disco**, sabiendo que SQLite se pierde. No subas el presupuesto real ahí.
+El `render.yaml` de este repo está pensado para **Starter + disco de 1 GB montado en `/var/data`**, con `GASTOS_DATA_DIR=/var/data` (camino B). El código de la app (`/opt/render/project/src`) sigue siendo efímero; no dejes la base solo en `data/` del checkout.
 
 ---
 
-## 3. GitHub: este repo de Cursor no le sirve a Render
+## 3. Camino B — Render Starter + disco (mismo archivo SQLite)
 
-Render despliega desde **GitHub, GitLab o Bitbucket**. El remoto de la máquina del agente es Origin (`origin.cursor.com`, repo temporal tipo `agent_temp`). **Render no puede conectar eso.**
+Úsalo si prefieres no crear cuenta en Turso y pagar ~7 USD. **Sí hace falta tarjeta.**
 
-Tú tienes que:
+### 3.1 Cuenta y Blueprint
 
-1. En Cursor, **Create repo** (crear el repositorio en tu GitHub).
-2. Empujar esta rama o `main` a ese GitHub.
-3. Recién entonces Render puede ver el código (`render.yaml`, `package.json`, etc.).
+1. Misma cuenta Render; ahora sí te pedirá método de pago para Starter + disco.
+2. New → **Blueprint** → repo de GitHub → rama → archivo `render.yaml` en la raíz.
+3. Crea un Web Service `gastos-hogar`, plan **starter**, disco `gastos-sqlite` en `/var/data` (1 GB).
+4. Secretos `sync: false`: `GASTOS_ADMIN_PASSWORD`, `GASTOS_ADMIN2_PASSWORD`. `SESSION_SECRET` puede autogenerarse.
+5. **No** pongas `TURSO_DATABASE_URL` en este camino: si está, gana Turso y el disco no guarda el presupuesto.
 
-Si GitHub ya está conectado y el código está ahí, sáltate Create repo. Si no, **hazlo antes de abrir Render**.
+A mano: Web Service Node, instance **Starter**, Disk mount **`/var/data`**, `GASTOS_DATA_DIR=/var/data`, mismas build/start. **No montes en `/opt/render/project/src` entero.**
 
-Rama de trabajo en el agente: `cursor/gastos-hogar-05fc`. En GitHub puedes usar esa rama o fusionar a `main` y desplegar `main`.
+### 3.2 URL estable
+
+Cuando el deploy ponga “Live”, Render muestra la URL: `https://<nombre-del-servicio>.onrender.com`. Si el nombre está ocupado, Render añade un sufijo. **Copia la URL real.** Custom domain es opcional.
+
+### 3.3 Exportar el SQLite del agente y subirlo al disco
+
+**No subas `gastos.sqlite` a git.**
+
+```bash
+npm run export-sqlite
+```
+
+Crea `exports/gastos-FECHA/` (está en `.gitignore`). El disco **no está en el build**, solo en runtime. Dashboard del Web Service → **Shell** (solo planes de pago):
+
+```bash
+echo "$GASTOS_DATA_DIR"
+ls -la /var/data
+```
+
+Copia el archivo al mount (`curl` a una URL privada temporal, o base64 si es chico). Reinicia el servicio. Avatares: `/var/data/avatars/`.
+
+El primer boot con disco vacío crea usuarios semilla con las env. Si luego sustituyes el archivo por el de esta VM, mandan **los usuarios de esa copia**.
+
+### 3.4 Comprobar disco
+
+Guarda un gasto → Restart en Render → el gasto sigue. Si desapareció, el sqlite no está en `/var/data` o el servicio es Free.
 
 ---
 
-## 4. Qué hace el código en producción
+## 4. Si insistes en Render Free *sin* Turso (demo, datos desechables)
+
+Misma cuenta, **sin tarjeta**. Instance **Free**. **No** disco. Sin `TURSO_*`. Cada sleep/restart/deploy **borra SQLite**. No lo uses para el presupuesto real.
+
+---
+
+## 5. Qué hace el código
 
 - `npm run build` genera `dist/`.
 - `npm start` lanza **Vite preview** (no un static site): mismos plugins de API (`server/auth.js`, `server/gastos-api.js`) + estáticos. Escucha `0.0.0.0` y `process.env.PORT`.
-- SQLite: `GASTOS_DATA_DIR/gastos.sqlite` si esa variable existe; si no, `data/gastos.sqlite` relativo al proceso.
-- En `NODE_ENV=production` hace falta `SESSION_SECRET`. Al **crear** una base vacía también `GASTOS_ADMIN_PASSWORD` (Melissa / `mgomez`) y `GASTOS_ADMIN2_PASSWORD` (Lenin / `lsotelon`). Si el sqlite ya tiene esos usuarios, el arranque **no cambia** las claves.
+- Si existe `TURSO_DATABASE_URL` (y `TURSO_AUTH_TOKEN` en remoto): `@libsql/client` contra Turso. Mismo esquema (`months`, `expenses`, `charges`, `details`, `users`, `sessions`, …).
+- Si no: `node:sqlite` en `GASTOS_DATA_DIR/gastos.sqlite` o `data/gastos.sqlite`. Así sigue `npm run dev` en el agente (Vite **4731**).
+- En `NODE_ENV=production` hace falta `SESSION_SECRET`. Al **crear** una base vacía también `GASTOS_ADMIN_PASSWORD` (Melissa / `mgomez`) y `GASTOS_ADMIN2_PASSWORD` (Lenin / `lsotelon`).
 - Cookie `gastos_session`: HttpOnly, SameSite=Lax, y **Secure** cuando la petición va por HTTPS (`x-forwarded-proto`, como en Render).
 
 En esta VM de desarrollo **no toques** Vite `0.0.0.0:4731` ni el túnel; siguen para Chrome en el portátil.
 
 ---
 
-## 5. Paso a paso en Render (con disco: lo que sí persiste)
+## 6. Camino C — Oracle Cloud Always Free (docs; el stack no cambia)
 
-### 5.1 Cuenta
+Esto es una **VM Linux tuya** en Oracle, no un PaaS. El código sigue con `node:sqlite` y un archivo en disco. No hace falta Turso. Más trabajo (SSH, firewall, systemd, HTTPS).
 
-1. Entra a [https://dashboard.render.com/register](https://dashboard.render.com/register).
-2. Lo más simple: “Sign up with GitHub”.
-3. **Free / Hobby:** no pide tarjeta. **Starter + disco:** Render pedirá método de pago antes de crear el servicio de pago.
+**Hecho (Oracle, 2026):** para abrir una cuenta Free Tier / Always Free **sí piden tarjeta** (crédito o débito que funcione como crédito). Sirve para verificar identidad. Oracle dice que **no cobra** salvo que pases a cuenta de pago; puede haber un cargo de autorización temporal que el banco suelta en unos días. No aceptan prepaid, virtuales ni débito con PIN. Una cuenta Free por persona. Fuentes: [oracle.com/cloud/free](https://www.oracle.com/cloud/free/), [docs: Sign up](https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-Sign_Up_for_Free_Oracle_Cloud_Promotion.htm), [Free Tier](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm).
 
-### 5.2 Conectar GitHub
+### 6.1 Cuenta y VM
 
-1. Dashboard → **Account Settings** → *Git Deployment Credentials* → autoriza GitHub si no lo hiciste al registrarte.
-2. Elige el repo que creaste en Cursor (paso 3). No el URL de `origin.cursor.com`.
+1. [https://www.oracle.com/cloud/free/](https://www.oracle.com/cloud/free/) → Sign up. País, correo, **móvil**, **tarjeta**.
+2. En la consola: Compute → Instances → Create.
+3. Forma Always Free típica:
+   - **Ampere** (VM.Standard.A1.Flex): hasta 4 OCPU / 24 GB compartidos en la cuenta; o
+   - **AMD** (VM.Standard.E2.1.Micro): 1/8 OCPU, 1 GB — más justo para Node+Vite+Caddy.
+4. Imagen: Ubuntu 22.04/24.04. Red: VCN por defecto. SSH: pega tu clave pública.
+5. **Block volume** Always Free (hay cupo de decenas a ~200 GB según la región): adjúntalo y móntalo, p. ej. `/var/lib/gastos`. Ahí va `gastos.sqlite` (`GASTOS_DATA_DIR=/var/lib/gastos`). El boot volume también es persistente; el block volume es por si quieres separar datos.
+6. La capacidad Always Free a veces está agotada en una región: prueba otra o AMD.
 
-### 5.3 Crear el Web Service (Blueprint o a mano)
+### 6.2 Red: puerto 443
 
-**Opción A — Blueprint (recomendado)**
+En la VCN → Security List (o NSG de la instancia):
 
-1. Dashboard → **New** → **Blueprint**.
-2. Repo de GitHub → rama (`main` o `cursor/gastos-hogar-05fc`) → archivo `render.yaml` en la raíz.
-3. Render va a crear un Web Service `gastos-hogar`, plan **starter**, disco `gastos-sqlite` en `/var/data` (1 GB).
-4. Te pedirá los secretos marcados `sync: false`:
-   - `GASTOS_ADMIN_PASSWORD`
-   - `GASTOS_ADMIN2_PASSWORD`
-   - `SESSION_SECRET` puede autogenerarse; si el Blueprint lo genera, no lo inventes a mano.
-5. Aplica el Blueprint. El primer deploy **no** incluye tu sqlite de esta VM: el disco empieza vacío.
+- Ingress TCP **22** (tu IP, no 0.0.0.0 si puedes).
+- Ingress TCP **80** y **443** (0.0.0.0/0) para HTTP y HTTPS.
+- Egress all (por defecto).
 
-**Opción B — A mano (si no usas Blueprint)**
+Anota la IP pública de la instancia.
 
-1. **New** → **Web Service** → el repo.
-2. Runtime: **Node**. Build: `npm ci && npm run build`. Start: `npm start`.
-3. Instance: **Starter** (no Free).
-4. **Disk** → Add disk:
-   - Name: `gastos-sqlite`
-   - Mount path: **`/var/data`** (tiene que ser exactamente donde apunta `GASTOS_DATA_DIR`)
-   - Size: 1 GB
-5. Environment:
-   - `NODE_ENV=production`
-   - `NODE_VERSION=22`
-   - `GASTOS_DATA_DIR=/var/data`
-   - `SESSION_SECRET` = una cadena larga aleatoria (no la contraseña de login)
-   - `GASTOS_ADMIN_PASSWORD` = la de Melissa
-   - `GASTOS_ADMIN2_PASSWORD` = la de Lenin
-6. Deploy.
+### 6.3 Instalar Node, clonar, systemd, Caddy
 
-Si montaras el disco en `/opt/render/project/src/data` en vez de `/var/data`, el sqlite caería en el `data/` del checkout y podrías omitir `GASTOS_DATA_DIR`. Este repo usa **`/var/data` + `GASTOS_DATA_DIR`** para no mezclar el código con el disco. **No montes en `/opt/render/project/src` entero** (Render lo prohíbe); un subdirectorio sí se puede, pero entonces cambia el env para que coincida.
-
-### 5.4 URL estable
-
-Cuando el deploy ponga “Live”, Render muestra la URL. El patrón es:
-
-`https://<nombre-del-servicio>.onrender.com`
-
-Si el servicio se llama `gastos-hogar` y el nombre está libre, será `https://gastos-hogar.onrender.com`. Si está ocupado, Render añade un sufijo. **Copia la URL real del dashboard**; no asumas el nombre.
-
-Custom domain (opcional): en el servicio → Custom Domains. En Hobby hay un cupo limitado de dominios.
-
-Abre `/login` (no hace falta poner `index.html`). La primera visita a un Starter no debería dormir; si en algún momento usaste Free, espera ~1 min al despertar.
-
----
-
-## 6. Exportar el SQLite de esta máquina y subirlo al disco
-
-**No subas `gastos.sqlite` a git.** Tiene el presupuesto del hogar y hashes de contraseña.
-
-### 6.1 En la máquina donde corre Vite (o en tu PC si copiaste el archivo)
+SSH a la VM (`ssh ubuntu@IP` o el usuario de la imagen). Después de **Create repo**:
 
 ```bash
-npm run export-sqlite
+sudo apt-get update
+sudo apt-get install -y git caddy
+# Node 22 (ejemplo NodeSource o nvm; la app pide >=22.13)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+sudo mkdir -p /var/lib/gastos
+sudo chown ubuntu:ubuntu /var/lib/gastos
+
+git clone https://github.com/TU_USUARIO/TU_REPO.git /home/ubuntu/gastos-hogar
+cd /home/ubuntu/gastos-hogar
+git checkout main   # o cursor/gastos-hogar-05fc
+npm ci
+npm run build
 ```
 
-Crea `exports/gastos-FECHA/` con `gastos.sqlite` (copia consistente; no mata Vite). El directorio `exports/` está en `.gitignore`.
+Archivo `/etc/systemd/system/gastos-hogar.service` (ajusta rutas y secretos; **no** dejes las contraseñas en un gist público):
 
-También puedes:
+```
+[Unit]
+Description=Gastos del hogar
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/gastos-hogar
+Environment=NODE_ENV=production
+Environment=PORT=4731
+Environment=GASTOS_DATA_DIR=/var/lib/gastos
+Environment=SESSION_SECRET=cambia-esto
+Environment=GASTOS_ADMIN_PASSWORD=cambia-esto
+Environment=GASTOS_ADMIN2_PASSWORD=cambia-esto
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ```bash
-bash scripts/export-sqlite.sh /tmp/gastos-hogar-export
+sudo systemctl daemon-reload
+sudo systemctl enable --now gastos-hogar
 ```
 
-### 6.2 Subirlo a Render (disco ya montado)
+Caddy (`/etc/caddy/Caddyfile`), con un DNS A hacia la IP (o el hostname efímero de Oracle no da certificado fácil; usa un dominio tuyo):
 
-El disco **no está disponible en el build**, solo en runtime. Tampoco en un job one-off. Hay que copiar con el servicio ya levantado.
+```
+tu-dominio.ejemplo {
+    reverse_proxy 127.0.0.1:4731
+}
+```
 
-1. Dashboard del Web Service → **Shell** (solo planes de pago).
-2. Comprueba el disco:
+```bash
+sudo systemctl reload caddy
+```
 
-   ```bash
-   echo "$GASTOS_DATA_DIR"
-   ls -la /var/data
-   ```
+Caddy pide 80/443 abiertos y un nombre DNS. Sube el sqlite exportado a `/var/lib/gastos/gastos.sqlite` con `scp`.
 
-3. Sube el archivo. Render no te da `scp` desde casa de forma directa. Caminos prácticos:
-
-   **A. Desde el PC (con el sqlite en la mano)**  
-   Súbelo a un sitio privado temporal (Drive, un gist **privado** no es ideal; mejor un objeto de un rato) y en el Shell:
-
-   ```bash
-   curl -L -o /var/data/gastos.sqlite "URL_PRIVADA_DEL_ARCHIVO"
-   ls -la /var/data/gastos.sqlite
-   ```
-
-   Luego borra esa URL. Reinicia el servicio (Manual Deploy → Restart) para que Node abra el archivo nuevo.
-
-   **B. Pegar por Base64** (archivo chico, ~100 KB–pocos MB) desde tu terminal local:
-
-   ```bash
-   base64 exports/gastos-FECHA/gastos.sqlite | wc -c
-   ```
-
-   En el Shell de Render:
-
-   ```bash
-   base64 -d > /var/data/gastos.sqlite
-   # pega el texto, Ctrl-D
-   ```
-
-   **C. Si el disco está vacío y aceptas re-sembrar usuarios**  
-   Entra con las contraseñas de las variables de entorno y usa **Descargar copia / Restaurar desde archivo** en la app (JSON del mes, no el sqlite completo). Los meses que no descargues no viajan. Para el historial entero, usa el `.sqlite`.
-
-4. Permisos: el archivo debe ser escribible por el proceso Node. Si el Shell lo creó como root y Node no puede escribir, `chmod 664 /var/data/gastos.sqlite` (o el dueño que use Render).
-
-5. Avatares: si exportaste `avatars/`, cópialos a `/var/data/avatars/`.
-
-**No pongas la base solo en `/opt/render/project/src/data`** sin disco: el siguiente deploy la borra.
-
-### 6.3 Si subes el sqlite *después* del primer arranque
-
-El primer boot con disco vacío crea usuarios semilla con las env vars. Si luego sustituyes el archivo por el de esta VM, mandan **los usuarios de esa copia** (hashes de aquí), no las env. Las env **no pisan** una base que ya tiene `mgomez` / `lsotelon`.
+Si no quieres dominio: Caddy en HTTP solo en 80 (sin certificado), o un túnel de pago. No uses trycloudflare como solución permanente desde el agente.
 
 ---
 
-## 7. Si insistes en Render Free (demo, datos desechables)
+## 7. Otras nubes (no recomendadas ahora)
 
-1. Misma cuenta, **sin tarjeta**.
-2. Web Service → instance **Free**. **No** añadas disco (la UI no te deja).
-3. Mismas build/start/env **excepto** `GASTOS_DATA_DIR` (o déjala vacía: usará `data/` efímero).
-4. A los 15 min sin visitas se duerme. 750 h/mes.
-5. Cada sleep/restart/deploy **borra SQLite**. No lo uses para el presupuesto real.
-
-El Blueprint del repo **no** usa Free a propósito: un `disk:` en `render.yaml` exige plan de pago.
+- **Fly.io:** el Hobby gratis ya no existe para cuentas nuevas. Prueba corta; volúmenes de pago y tarjeta.
+- **Koyeb:** el instance Free **no puede** montar Volumes.
+- **Neon / Render Postgres:** persistiría, pero habría que migrar de SQLite a Postgres.
+- **Cloudflare D1:** gratis para datos; obliga a Workers, no a este proceso Node + Vite.
 
 ---
 
-## 8. Comprobar que persistió
+## 8. Checklist rápido
 
-1. Entra, guarda un gasto de prueba, cierra sesión.
-2. En Render: **Manual Deploy** → Restart (no hace falta Rebuild).
-3. Vuelve a `/login` y mira si el gasto sigue.
-4. Si desapareció, el sqlite no está en el mount (`/var/data`) o el servicio es Free.
+Camino A (gratis):
 
----
+- [ ] **Create repo** en GitHub y push (si Render no ve el código).
+- [ ] Cuenta Turso Free, crear DB, copiar URL y token (nunca a git).
+- [ ] Cuenta Render Free, Web Service Node (**no** Static Site), **sin disco**.
+- [ ] Env: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SESSION_SECRET`, `GASTOS_ADMIN_PASSWORD`, `GASTOS_ADMIN2_PASSWORD`, `NODE_ENV=production`.
+- [ ] Deploy; copiar `https://….onrender.com` del dashboard.
+- [ ] Restaurar JSON desde la app del agente; Restart: los datos siguen.
+- [ ] No dependas de trycloudflare.
 
-## 9. Checklist rápido
+Camino B (pago, mismo sqlite):
 
-- [ ] Create repo en GitHub y push (si Render no ve el código).
-- [ ] Cuenta Render; tarjeta **solo** si vas a Starter + disco.
-- [ ] Web Service Node, **no** Static Site.
-- [ ] Disco montado en `/var/data` y `GASTOS_DATA_DIR=/var/data`.
-- [ ] `SESSION_SECRET`, `GASTOS_ADMIN_PASSWORD`, `GASTOS_ADMIN2_PASSWORD` en el dashboard, nunca en git.
-- [ ] `npm run export-sqlite` y copia al disco; no commits del `.sqlite`.
-- [ ] URL copiada del dashboard (`https://….onrender.com`).
-- [ ] Restart de prueba: los datos siguen.
+- [ ] Create repo.
+- [ ] Render Starter + disco `/var/data` + `GASTOS_DATA_DIR=/var/data`.
+- [ ] `npm run export-sqlite` y copia al disco.
+- [ ] Sin `TURSO_*`.
 
-Fuentes: [render.com/docs/free](https://render.com/docs/free), [render.com/docs/disks](https://render.com/docs/disks), [render.com/pricing](https://render.com/pricing), [fly.io/docs/about/free-trial](https://fly.io/docs/about/free-trial/), [turso.tech/pricing](https://turso.tech/pricing).
+Camino C (Oracle Always Free):
+
+- [ ] Create repo.
+- [ ] Cuenta Oracle **con tarjeta de verificación**.
+- [ ] VM Always Free + security list 443 + Node + systemd + Caddy + `GASTOS_DATA_DIR` en volumen persistente.
+
+Fuentes: [render.com/docs/free](https://render.com/docs/free), [render.com/docs/disks](https://render.com/docs/disks), [render.com/pricing](https://render.com/pricing), [turso.tech/pricing](https://turso.tech/pricing), [oracle.com/cloud/free](https://www.oracle.com/cloud/free/), [fly.io/docs/about/free-trial](https://fly.io/docs/about/free-trial/).

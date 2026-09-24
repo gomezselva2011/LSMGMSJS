@@ -6,6 +6,12 @@
 # Disco persistente = Web Service de pago (Starter ~7 USD/mes) + disco
 # (~0,25 USD/GB/mes). Este Blueprint usa plan starter + 1 GB en /var/data.
 #
+# Camino gratis (recomendado): Turso para la base + Render Free para Node.
+# Ver render-free-turso.yaml y docs/hosting-gratis.md. Si TURSO_DATABASE_URL
+# está definido, el sqlite local / el disco no guardan el presupuesto.
+#
+# Render NO es la VM del Cloud Agent. Son ordenadores distintos.
+#
 # No despliega nada por sí solo: Melissa tiene que conectar un repo de GitHub
 # (este clone de Origin/agent_temp no le sirve a Render) y aplicar el Blueprint.
 

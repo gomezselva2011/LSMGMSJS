@@ -1,13 +1,23 @@
-import { mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import {
+  DRIVER_SQLITE,
+  applyPragmas,
+  connectionKey as tursoConnectionKey,
+  mutexFor,
+  openSqliteFile,
+  openTursoDatabase,
+  shouldUseTurso,
+} from './sql-conn.js'
+
+export { DRIVER_SQLITE, shouldUseTurso }
 
 export const SCHEMA_VERSION = 1
 export const ROLE_ADMIN = 'admin'
 export const ROLE_VIEWER = 'viewer'
 
 const connections = new Map()
+const opening = new Map()
 
 export const MONTH_KEY_RE = /^\d{4}-\d{2}$/
 
@@ -79,6 +89,11 @@ export function resolveDbPath(options = {}) {
   return path.join(resolveDataDir(options), 'gastos.sqlite')
 }
 
+export function connectionKey(options = {}) {
+  if (shouldUseTurso(options)) return tursoConnectionKey(options)
+  return resolveDbPath(options)
+}
+
 export function normalizeRole(value) {
   if (value === ROLE_ADMIN) return ROLE_ADMIN
   if (value === ROLE_VIEWER || value === 'usuario') return ROLE_VIEWER
@@ -123,27 +138,41 @@ function asText(value, fallback = null) {
   return text.length ? text : fallback
 }
 
-function withTransaction(db, fn) {
-  db.exec('BEGIN IMMEDIATE')
+async function execSql(db, sql) {
+  return await db.exec(sql)
+}
+
+async function getRow(db, sql, ...args) {
+  return await db.prepare(sql).get(...args)
+}
+
+async function allRows(db, sql, ...args) {
+  const rows = await db.prepare(sql).all(...args)
+  return rows || []
+}
+
+async function runSql(db, sql, ...args) {
+  return await db.prepare(sql).run(...args)
+}
+
+function withLock(db, fn) {
+  return mutexFor(db).runExclusive(fn)
+}
+
+async function withTransaction(db, fn) {
+  await execSql(db, 'BEGIN IMMEDIATE')
   try {
-    const result = fn()
-    db.exec('COMMIT')
+    const result = await fn()
+    await execSql(db, 'COMMIT')
     return result
   } catch (error) {
     try {
-      db.exec('ROLLBACK')
+      await execSql(db, 'ROLLBACK')
     } catch {
       // Ignore rollback failures when the transaction never started.
     }
     throw error
   }
-}
-
-function applyPragmas(db) {
-  db.exec('PRAGMA journal_mode = WAL')
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec('PRAGMA busy_timeout = 5000')
-  db.exec('PRAGMA synchronous = NORMAL')
 }
 
 const SCHEMA_SQL = `
@@ -246,25 +275,43 @@ CREATE INDEX IF NOT EXISTS idx_expenses_month ON expenses(month_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_charges_expense ON charges(month_id, expense_id, sort_order);
 `
 
-function createSchema(db) {
-  db.exec(SCHEMA_SQL)
-  const version = db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')
+async function createSchema(db) {
+  await execSql(db, SCHEMA_SQL)
+  const version = await getRow(db, 'SELECT value FROM meta WHERE key = ?', 'schema_version')
   if (!version) {
-    db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', String(SCHEMA_VERSION))
+    await runSql(db, 'INSERT INTO meta (key, value) VALUES (?, ?)', 'schema_version', String(SCHEMA_VERSION))
   }
 }
 
-export function openGastosDb(options = {}) {
-  const dbPath = resolveDbPath(options)
-  const existing = connections.get(dbPath)
-  if (existing) return existing
-
-  mkdirSync(path.dirname(dbPath), { recursive: true })
-  const db = new DatabaseSync(dbPath)
-  applyPragmas(db)
-  createSchema(db)
-  connections.set(dbPath, db)
+async function openNewConnection(options = {}) {
+  let db
+  if (shouldUseTurso(options)) {
+    db = await openTursoDatabase(options)
+  } else {
+    db = openSqliteFile(resolveDbPath(options))
+  }
+  await applyPragmas(db)
+  await createSchema(db)
   return db
+}
+
+export async function openGastosDb(options = {}) {
+  const key = connectionKey(options)
+  const existing = connections.get(key)
+  if (existing) return existing
+  const inFlight = opening.get(key)
+  if (inFlight) return inFlight
+
+  const pending = openNewConnection(options)
+    .then((db) => {
+      connections.set(key, db)
+      return db
+    })
+    .finally(() => {
+      opening.delete(key)
+    })
+  opening.set(key, pending)
+  return pending
 }
 
 export function closeGastosDb(dbPath) {
@@ -279,19 +326,22 @@ export function closeGastosDb(dbPath) {
   connections.delete(key)
 }
 
-export function getMeta(db, key) {
-  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key)
+export async function getMeta(db, key) {
+  const row = await getRow(db, 'SELECT value FROM meta WHERE key = ?', key)
   return row ? row.value : null
 }
 
-export function setMeta(db, key, value) {
+export async function setMeta(db, key, value) {
   if (value == null) {
-    db.prepare('DELETE FROM meta WHERE key = ?').run(key)
+    await runSql(db, 'DELETE FROM meta WHERE key = ?', key)
     return
   }
-  db.prepare(
+  await runSql(
+    db,
     'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-  ).run(key, String(value))
+    key,
+    String(value),
+  )
 }
 
 function userFromRow(row) {
@@ -305,17 +355,20 @@ function userFromRow(row) {
   }
 }
 
-export function listUsers(db) {
-  return db.prepare('SELECT * FROM users ORDER BY rowid').all().map(userFromRow)
+export async function listUsers(db) {
+  return (await allRows(db, 'SELECT * FROM users ORDER BY rowid')).map(userFromRow)
 }
 
-export function countUsers(db) {
-  return db.prepare('SELECT COUNT(*) AS n FROM users').get().n
+export async function countUsers(db) {
+  const row = await getRow(db, 'SELECT COUNT(*) AS n FROM users')
+  return row.n
 }
 
-export function replaceUsers(db, users) {
-  const ids = new Set()
-  const upsert = db.prepare(`
+export async function replaceUsers(db, users) {
+  await withLock(db, () =>
+    withTransaction(db, async () => {
+      const ids = new Set()
+      const upsert = db.prepare(`
     INSERT INTO users (id, username, password_hash, role, display_name, avatar_path)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
@@ -325,43 +378,47 @@ export function replaceUsers(db, users) {
       display_name = excluded.display_name,
       avatar_path = excluded.avatar_path
   `)
-  withTransaction(db, () => {
-    for (const user of users) {
-      const role = normalizeRole(user.role) || ROLE_VIEWER
-      ids.add(user.id)
-      upsert.run(user.id, user.username, user.passwordHash, role, user.name, user.photo || null)
-    }
-    const existing = db.prepare('SELECT id FROM users').all()
-    const remove = db.prepare('DELETE FROM users WHERE id = ?')
-    for (const row of existing) {
-      if (!ids.has(row.id)) remove.run(row.id)
-    }
-  })
+      for (const user of users) {
+        const role = normalizeRole(user.role) || ROLE_VIEWER
+        ids.add(user.id)
+        await upsert.run(user.id, user.username, user.passwordHash, role, user.name, user.photo || null)
+      }
+      const existing = await allRows(db, 'SELECT id FROM users')
+      const remove = db.prepare('DELETE FROM users WHERE id = ?')
+      for (const row of existing) {
+        if (!ids.has(row.id)) await remove.run(row.id)
+      }
+    }),
+  )
 }
 
-export function listSessions(db) {
+export async function listSessions(db) {
   const sessions = {}
-  for (const row of db.prepare('SELECT token, user_id, expires_at FROM sessions').all()) {
+  for (const row of await allRows(db, 'SELECT token, user_id, expires_at FROM sessions')) {
     sessions[row.token] = { userId: row.user_id, expiresAt: Number(row.expires_at) }
   }
   return sessions
 }
 
-export function replaceSessions(db, sessions) {
-  const known = new Set(db.prepare('SELECT id FROM users').all().map((row) => row.id))
-  const insert = db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)')
-  withTransaction(db, () => {
-    db.exec('DELETE FROM sessions')
-    for (const [token, session] of Object.entries(sessions || {})) {
-      if (!session || !token || !known.has(session.userId)) continue
-      insert.run(token, session.userId, session.expiresAt)
-    }
-  })
+export async function replaceSessions(db, sessions) {
+  await withLock(db, () =>
+    withTransaction(db, async () => {
+      const known = new Set((await allRows(db, 'SELECT id FROM users')).map((row) => row.id))
+      const insert = db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)')
+      await execSql(db, 'DELETE FROM sessions')
+      for (const [token, session] of Object.entries(sessions || {})) {
+        if (!session || !token || !known.has(session.userId)) continue
+        await insert.run(token, session.userId, session.expiresAt)
+      }
+    }),
+  )
 }
 
-function insertMonthRows(db, monthId, month) {
+async function insertMonthRows(db, monthId, month) {
   const data = month && typeof month === 'object' ? month : {}
-  db.prepare('INSERT INTO months (id, exchange_rate, extra_json) VALUES (?, ?, ?)').run(
+  await runSql(
+    db,
+    'INSERT INTO months (id, exchange_rate, extra_json) VALUES (?, ?, ?)',
     monthId,
     data.exchangeRate == null || data.exchangeRate === '' ? null : Number(data.exchangeRate),
     extraJson(data, MONTH_KEYS),
@@ -374,7 +431,7 @@ function insertMonthRows(db, monthId, month) {
   for (const [index, income] of (Array.isArray(data.incomes) ? data.incomes : []).entries()) {
     if (!income || typeof income !== 'object') continue
     const id = asText(income.id, `inc_${index}`)
-    insertIncome.run(
+    await insertIncome.run(
       monthId,
       id,
       asText(income.name, 'Ingreso'),
@@ -393,7 +450,7 @@ function insertMonthRows(db, monthId, month) {
   for (const [index, category] of (Array.isArray(data.categories) ? data.categories : []).entries()) {
     if (!category || typeof category !== 'object') continue
     const id = asText(category.id, `cat_${index}`)
-    insertCategory.run(
+    await insertCategory.run(
       monthId,
       id,
       asText(category.name, 'Categoría'),
@@ -422,7 +479,7 @@ function insertMonthRows(db, monthId, month) {
     if (!expense || typeof expense !== 'object') continue
     const expenseId = asText(expense.id, `exp_${index}`)
     const isCard = typeof expense.isCard === 'boolean' ? (expense.isCard ? 1 : 0) : null
-    insertExpense.run(
+    await insertExpense.run(
       monthId,
       expenseId,
       asText(expense.categoryId, null),
@@ -443,7 +500,7 @@ function insertMonthRows(db, monthId, month) {
     }
     for (const [chargeIndex, charge] of charges.entries()) {
       if (!charge || typeof charge !== 'object') continue
-      insertCharge.run(
+      await insertCharge.run(
         monthId,
         expenseId,
         asText(charge.id, `chg_${chargeIndex}`),
@@ -457,7 +514,7 @@ function insertMonthRows(db, monthId, month) {
 
     const details = expense.details && typeof expense.details === 'object' ? expense.details : null
     if (details) {
-      insertDetails.run(
+      await insertDetails.run(
         monthId,
         expenseId,
         asText(details.accountNumber, null),
@@ -471,16 +528,16 @@ function insertMonthRows(db, monthId, month) {
   }
 }
 
-function replaceMonthRows(db, monthId, month) {
-  db.prepare('DELETE FROM months WHERE id = ?').run(monthId)
-  insertMonthRows(db, monthId, month)
+async function replaceMonthRows(db, monthId, month) {
+  await runSql(db, 'DELETE FROM months WHERE id = ?', monthId)
+  await insertMonthRows(db, monthId, month)
 }
 
 function monthKeysFrom(months) {
   return Object.keys(months || {}).filter(isMonthKey)
 }
 
-export function writeHouseholdState(db, data) {
+export async function writeHouseholdState(db, data) {
   const state = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
   const months =
     state.months && typeof state.months === 'object' && !Array.isArray(state.months) ? state.months : {}
@@ -488,37 +545,39 @@ export function writeHouseholdState(db, data) {
   const currentMonth = isMonthKey(state.currentMonth) ? state.currentMonth : null
   const saveScope = state.saveScope === 'all' ? 'all' : 'current'
 
-  withTransaction(db, () => {
-    setMeta(db, 'version', state.version == null ? null : state.version)
-    setMeta(db, 'current_month', currentMonth)
-    const extra = extraJson(state, STATE_KEYS)
-    setMeta(db, 'state_extra', extra)
+  await withLock(db, () =>
+    withTransaction(db, async () => {
+      await setMeta(db, 'version', state.version == null ? null : state.version)
+      await setMeta(db, 'current_month', currentMonth)
+      const extra = extraJson(state, STATE_KEYS)
+      await setMeta(db, 'state_extra', extra)
 
-    const existingKeys = new Set(db.prepare('SELECT id FROM months').all().map((row) => row.id))
-    const incoming = new Set(incomingKeys)
+      const existingKeys = new Set((await allRows(db, 'SELECT id FROM months')).map((row) => row.id))
+      const incoming = new Set(incomingKeys)
 
-    if (saveScope === 'all') {
-      for (const id of existingKeys) {
-        if (!incoming.has(id)) {
-          db.prepare('DELETE FROM months WHERE id = ?').run(id)
+      if (saveScope === 'all') {
+        for (const id of existingKeys) {
+          if (!incoming.has(id)) {
+            await runSql(db, 'DELETE FROM months WHERE id = ?', id)
+          }
         }
       }
-    }
 
-    const toWrite = new Set()
-    for (const id of incoming) {
-      if (!existingKeys.has(id)) toWrite.add(id)
-    }
-    if (saveScope === 'all' || !currentMonth || !incoming.has(currentMonth)) {
-      for (const id of incoming) toWrite.add(id)
-    } else {
-      toWrite.add(currentMonth)
-    }
+      const toWrite = new Set()
+      for (const id of incoming) {
+        if (!existingKeys.has(id)) toWrite.add(id)
+      }
+      if (saveScope === 'all' || !currentMonth || !incoming.has(currentMonth)) {
+        for (const id of incoming) toWrite.add(id)
+      } else {
+        toWrite.add(currentMonth)
+      }
 
-    for (const monthId of toWrite) {
-      replaceMonthRows(db, monthId, months[monthId])
-    }
-  })
+      for (const monthId of toWrite) {
+        await replaceMonthRows(db, monthId, months[monthId])
+      }
+    }),
+  )
 }
 
 function detailsFromRow(row) {
@@ -541,113 +600,115 @@ function detailsFromRow(row) {
   return empty ? details : details
 }
 
-export function readHouseholdState(db) {
-  const monthRows = db.prepare('SELECT * FROM months ORDER BY id').all()
-  const version = getMeta(db, 'version')
-  const currentMonth = getMeta(db, 'current_month')
-  const stateExtra = parseJson(getMeta(db, 'state_extra'), null)
+export async function readHouseholdState(db) {
+  return withLock(db, async () => {
+    const monthRows = await allRows(db, 'SELECT * FROM months ORDER BY id')
+    const version = await getMeta(db, 'version')
+    const currentMonth = await getMeta(db, 'current_month')
+    const stateExtra = parseJson(await getMeta(db, 'state_extra'), null)
 
-  if (!monthRows.length && currentMonth == null && version == null && !stateExtra) {
-    return {}
-  }
-
-  const incomesByMonth = new Map()
-  for (const row of db.prepare('SELECT * FROM incomes ORDER BY month_id, sort_order, id').all()) {
-    const list = incomesByMonth.get(row.month_id) || []
-    list.push(row)
-    incomesByMonth.set(row.month_id, list)
-  }
-  const categoriesByMonth = new Map()
-  for (const row of db.prepare('SELECT * FROM categories ORDER BY month_id, sort_order, id').all()) {
-    const list = categoriesByMonth.get(row.month_id) || []
-    list.push(row)
-    categoriesByMonth.set(row.month_id, list)
-  }
-  const expensesByMonth = new Map()
-  for (const row of db.prepare('SELECT * FROM expenses ORDER BY month_id, sort_order, id').all()) {
-    const list = expensesByMonth.get(row.month_id) || []
-    list.push(row)
-    expensesByMonth.set(row.month_id, list)
-  }
-  const chargesByExpense = new Map()
-  for (const row of db.prepare('SELECT * FROM charges ORDER BY month_id, expense_id, sort_order, id').all()) {
-    const key = `${row.month_id}\0${row.expense_id}`
-    const list = chargesByExpense.get(key) || []
-    list.push(row)
-    chargesByExpense.set(key, list)
-  }
-  const detailsByExpense = new Map()
-  for (const row of db.prepare('SELECT * FROM expense_details').all()) {
-    detailsByExpense.set(`${row.month_id}\0${row.expense_id}`, row)
-  }
-
-  const months = {}
-  for (const monthRow of monthRows) {
-    const month = mergeExtra({}, monthRow.extra_json)
-    if (monthRow.exchange_rate != null && Number.isFinite(Number(monthRow.exchange_rate))) {
-      month.exchangeRate = Number(monthRow.exchange_rate)
+    if (!monthRows.length && currentMonth == null && version == null && !stateExtra) {
+      return {}
     }
-    month.incomes = (incomesByMonth.get(monthRow.id) || []).map((row) => {
-      const income = mergeExtra(
-        {
-          id: row.id,
-          name: row.name,
-          amount: asInt(row.amount, 0),
-        },
-        row.extra_json,
-      )
-      if (row.due_day != null) income.dueDay = Number(row.due_day)
-      else income.dueDay = income.dueDay ?? null
-      if (row.currency) income.currency = row.currency
-      return income
-    })
-    month.categories = (categoriesByMonth.get(monthRow.id) || []).map((row) => {
-      const category = mergeExtra({ id: row.id, name: row.name }, row.extra_json)
-      if (row.layout) category.layout = row.layout
-      return category
-    })
-    month.expenses = (expensesByMonth.get(monthRow.id) || []).map((row) => {
-      const expense = mergeExtra(
-        {
-          id: row.id,
-          name: row.name,
-          amount: asInt(row.amount, 0),
-        },
-        row.extra_json,
-      )
-      if (row.category_id) expense.categoryId = row.category_id
-      expense.dueDay = row.due_day == null ? (expense.dueDay ?? null) : Number(row.due_day)
-      if (row.rubro) expense.rubro = row.rubro
-      if (row.is_card != null) expense.isCard = Number(row.is_card) === 1
-      if (row.currency) expense.currency = row.currency
-      const chargeRows = chargesByExpense.get(`${monthRow.id}\0${row.id}`) || []
-      expense.charges = chargeRows.map((charge) => {
-        const item = mergeExtra(
-          {
-            id: charge.id,
-            name: charge.name,
-            amount: asInt(charge.amount, 0),
-          },
-          charge.extra_json,
-        )
-        if (charge.currency) item.currency = charge.currency
-        return item
-      })
-      const details = detailsFromRow(detailsByExpense.get(`${monthRow.id}\0${row.id}`))
-      if (details) expense.details = details
-      return expense
-    })
-    months[monthRow.id] = month
-  }
 
-  const out = stateExtra && typeof stateExtra === 'object' && !Array.isArray(stateExtra) ? { ...stateExtra } : {}
-  if (version != null && version !== '') {
-    const numeric = Number(version)
-    out.version = Number.isFinite(numeric) && String(numeric) === String(version).trim() ? numeric : version
-  }
-  if (currentMonth) out.currentMonth = currentMonth
-  out.months = months
-  return out
+    const incomesByMonth = new Map()
+    for (const row of await allRows(db, 'SELECT * FROM incomes ORDER BY month_id, sort_order, id')) {
+      const list = incomesByMonth.get(row.month_id) || []
+      list.push(row)
+      incomesByMonth.set(row.month_id, list)
+    }
+    const categoriesByMonth = new Map()
+    for (const row of await allRows(db, 'SELECT * FROM categories ORDER BY month_id, sort_order, id')) {
+      const list = categoriesByMonth.get(row.month_id) || []
+      list.push(row)
+      categoriesByMonth.set(row.month_id, list)
+    }
+    const expensesByMonth = new Map()
+    for (const row of await allRows(db, 'SELECT * FROM expenses ORDER BY month_id, sort_order, id')) {
+      const list = expensesByMonth.get(row.month_id) || []
+      list.push(row)
+      expensesByMonth.set(row.month_id, list)
+    }
+    const chargesByExpense = new Map()
+    for (const row of await allRows(db, 'SELECT * FROM charges ORDER BY month_id, expense_id, sort_order, id')) {
+      const key = `${row.month_id}\0${row.expense_id}`
+      const list = chargesByExpense.get(key) || []
+      list.push(row)
+      chargesByExpense.set(key, list)
+    }
+    const detailsByExpense = new Map()
+    for (const row of await allRows(db, 'SELECT * FROM expense_details')) {
+      detailsByExpense.set(`${row.month_id}\0${row.expense_id}`, row)
+    }
+
+    const months = {}
+    for (const monthRow of monthRows) {
+      const month = mergeExtra({}, monthRow.extra_json)
+      if (monthRow.exchange_rate != null && Number.isFinite(Number(monthRow.exchange_rate))) {
+        month.exchangeRate = Number(monthRow.exchange_rate)
+      }
+      month.incomes = (incomesByMonth.get(monthRow.id) || []).map((row) => {
+        const income = mergeExtra(
+          {
+            id: row.id,
+            name: row.name,
+            amount: asInt(row.amount, 0),
+          },
+          row.extra_json,
+        )
+        if (row.due_day != null) income.dueDay = Number(row.due_day)
+        else income.dueDay = income.dueDay ?? null
+        if (row.currency) income.currency = row.currency
+        return income
+      })
+      month.categories = (categoriesByMonth.get(monthRow.id) || []).map((row) => {
+        const category = mergeExtra({ id: row.id, name: row.name }, row.extra_json)
+        if (row.layout) category.layout = row.layout
+        return category
+      })
+      month.expenses = (expensesByMonth.get(monthRow.id) || []).map((row) => {
+        const expense = mergeExtra(
+          {
+            id: row.id,
+            name: row.name,
+            amount: asInt(row.amount, 0),
+          },
+          row.extra_json,
+        )
+        if (row.category_id) expense.categoryId = row.category_id
+        expense.dueDay = row.due_day == null ? (expense.dueDay ?? null) : Number(row.due_day)
+        if (row.rubro) expense.rubro = row.rubro
+        if (row.is_card != null) expense.isCard = Number(row.is_card) === 1
+        if (row.currency) expense.currency = row.currency
+        const chargeRows = chargesByExpense.get(`${monthRow.id}\0${row.id}`) || []
+        expense.charges = chargeRows.map((charge) => {
+          const item = mergeExtra(
+            {
+              id: charge.id,
+              name: charge.name,
+              amount: asInt(charge.amount, 0),
+            },
+            charge.extra_json,
+          )
+          if (charge.currency) item.currency = charge.currency
+          return item
+        })
+        const details = detailsFromRow(detailsByExpense.get(`${monthRow.id}\0${row.id}`))
+        if (details) expense.details = details
+        return expense
+      })
+      months[monthRow.id] = month
+    }
+
+    const out = stateExtra && typeof stateExtra === 'object' && !Array.isArray(stateExtra) ? { ...stateExtra } : {}
+    if (version != null && version !== '') {
+      const numeric = Number(version)
+      out.version = Number.isFinite(numeric) && String(numeric) === String(version).trim() ? numeric : version
+    }
+    if (currentMonth) out.currentMonth = currentMonth
+    out.months = months
+    return out
+  })
 }
 
 async function readJsonIfPresent(filePath, fallback) {
@@ -671,11 +732,11 @@ export async function migrateLegacyJson(db, options = {}) {
     (options.dataPath && String(options.dataPath).endsWith('.json') ? options.dataPath : null) ||
     path.join(dataDir, 'gastos.json')
 
-  if (countUsers(db) === 0) {
+  if ((await countUsers(db)) === 0) {
     const userFile = await readJsonIfPresent(usersPath, null)
     const users = Array.isArray(userFile?.users) ? userFile.users : []
     if (users.length) {
-      replaceUsers(
+      await replaceUsers(
         db,
         users.map((user) => ({
           id: String(user.id),
@@ -686,26 +747,26 @@ export async function migrateLegacyJson(db, options = {}) {
           photo: user.photo || user.avatar_path || null,
         })),
       )
-      setMeta(db, 'migrated_users_json', usersPath)
+      await setMeta(db, 'migrated_users_json', usersPath)
     }
   }
 
-  const sessionCount = db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n
+  const sessionCount = (await getRow(db, 'SELECT COUNT(*) AS n FROM sessions')).n
   if (sessionCount === 0) {
     const sessionFile = await readJsonIfPresent(sessionsPath, null)
     const sessions = sessionFile?.sessions && typeof sessionFile.sessions === 'object' ? sessionFile.sessions : null
     if (sessions && Object.keys(sessions).length) {
-      replaceSessions(db, sessions)
-      setMeta(db, 'migrated_sessions_json', sessionsPath)
+      await replaceSessions(db, sessions)
+      await setMeta(db, 'migrated_sessions_json', sessionsPath)
     }
   }
 
-  const monthCount = db.prepare('SELECT COUNT(*) AS n FROM months').get().n
-  if (monthCount === 0 && getMeta(db, 'current_month') == null) {
+  const monthCount = (await getRow(db, 'SELECT COUNT(*) AS n FROM months')).n
+  if (monthCount === 0 && (await getMeta(db, 'current_month')) == null) {
     const household = await readJsonIfPresent(gastosPath, null)
     if (household && typeof household === 'object' && !Array.isArray(household) && Object.keys(household).length) {
-      writeHouseholdState(db, household)
-      setMeta(db, 'migrated_gastos_json', gastosPath)
+      await writeHouseholdState(db, household)
+      await setMeta(db, 'migrated_gastos_json', gastosPath)
     }
   }
 
@@ -713,7 +774,7 @@ export async function migrateLegacyJson(db, options = {}) {
 }
 
 export async function ensureGastosDb(options = {}) {
-  const db = openGastosDb(options)
+  const db = await openGastosDb(options)
   await migrateLegacyJson(db, options)
   return db
 }

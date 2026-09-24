@@ -83,7 +83,7 @@ describe('gastos API sqlite store', () => {
     const onDisk = await readGastosFile(dataPath, { dbPath })
     assert.equal(onDisk.months['2026-10'].expenses[0].charges[0].name, 'Lentes')
 
-    const db = openGastosDb({ dbPath })
+    const db = await openGastosDb({ dbPath })
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM charges').get().n, 1)
     assert.equal(db.prepare('SELECT name FROM charges').get().name, 'Lentes')
 
@@ -93,8 +93,8 @@ describe('gastos API sqlite store', () => {
     assert.equal(again.months['2026-10'].expenses[0].charges[0].name, 'Lentes')
 
     closeGastosDb(dbPath)
-    const reopened = openGastosDb({ dbPath })
-    const afterRestart = readHouseholdState(reopened)
+    const reopened = await openGastosDb({ dbPath })
+    const afterRestart = await readHouseholdState(reopened)
     assert.equal(afterRestart.months['2026-10'].expenses[0].charges[0].name, 'Lentes')
   })
 
@@ -138,7 +138,7 @@ describe('gastos API sqlite store', () => {
     assert.equal(body.months['2026-09'].expenses[0].rubro, 'credito')
     assert.equal(body.months['2026-10'].incomes[0].amount, 258000)
 
-    const db = openGastosDb({ dbPath })
+    const db = await openGastosDb({ dbPath })
     const ids = db.prepare('SELECT id FROM months ORDER BY id').all().map((row) => row.id)
     assert.deepEqual(ids, ['2026-09', '2026-10'])
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM expenses').get().n, 2)
@@ -164,7 +164,7 @@ describe('gastos API sqlite store', () => {
       () => {},
       { dbPath, dataPath },
     )
-    const db = openGastosDb({ dbPath })
+    const db = await openGastosDb({ dbPath })
     const octoberRowid = db.prepare("SELECT rowid AS n FROM months WHERE id = '2026-10'").get().n
 
     const dirtyOctober = structuredClone(october)
@@ -204,7 +204,7 @@ describe('gastos API sqlite store', () => {
     const res = mockRes()
     await handleGastosApi(putReq('{not-json'), res, () => {}, { dbPath, dataPath })
     assert.equal(res.statusCode, 400)
-    const db = openGastosDb({ dbPath })
+    const db = await openGastosDb({ dbPath })
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM months').get().n, 0)
   })
 
