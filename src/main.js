@@ -15,6 +15,8 @@ import {
   HouseholdLoadError,
   queueServerSave,
   reorderCategories,
+  reorderExpensesInCategory,
+  expensesInCategory,
   restoreOctoberMonth,
   restoreOctoberPreservingOthers,
   setHouseholdWritesEnabled,
@@ -110,6 +112,8 @@ let moveExpenseId = null
 let dragExpenseId = null
 let dragCategoryId = null
 let categoryDropPlace = null
+let expenseDropPlace = null
+let expenseDropTargetId = null
 let longPressTimer = 0
 let longPressStart = null
 let currentUser = null
@@ -640,7 +644,7 @@ function ledgerRow(item, kind) {
     : ''
   const grip =
     kind === 'expense' && canEdit()
-      ? `<span class="drag-grip" aria-hidden="true" title="Arrastra a otra categoría"></span>`
+      ? `<span class="drag-grip" aria-hidden="true" title="Arrastra para reordenar o mover de categoría"></span>`
       : ''
   const paidBox =
     kind === 'expense'
@@ -721,9 +725,7 @@ function renderCategories() {
   }
 
   const cards = month.categories.map((category) => {
-    const expenses = month.expenses
-      .filter((item) => item.categoryId === category.id)
-      .sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99) || a.name.localeCompare(b.name, 'es'))
+    const expenses = expensesInCategory(month, category.id)
     const layout = category.layout === LAYOUT_HALF ? LAYOUT_HALF : LAYOUT_FULL
     const isFull = layout === LAYOUT_FULL
     const totalUsd = categoryTotalUsd(month, category.id)
@@ -1803,6 +1805,11 @@ function clearDropTargets() {
     }
   })
   categoryDropPlace = null
+  expenseDropPlace = null
+  expenseDropTargetId = null
+  categoryGridEl?.querySelectorAll('.ledger-drag').forEach((row) => {
+    row.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-target')
+  })
 }
 
 function restoreRowDraggable() {
@@ -1902,6 +1909,41 @@ function reorderCategory(sourceId, targetId, place) {
   render()
   showToast('Orden de categorías actualizado')
   announceDnd(`Categorías: ${month.categories.map((entry) => entry.name).join(', ')}.`)
+  return true
+}
+
+function rowDropPlacement(row, clientY) {
+  const rect = row.getBoundingClientRect()
+  return clientY > rect.top + rect.height / 2 ? 'after' : 'before'
+}
+
+function setExpenseReorderTarget(row, place, source, target) {
+  if (!row) {
+    clearDropTargets()
+    return
+  }
+  categoryGridEl?.querySelectorAll('.category-card').forEach((card) => {
+    card.classList.remove('is-drop-target', 'is-drop-invalid', 'is-drop-before', 'is-drop-after')
+    const hint = card.querySelector('.drop-hint')
+    if (hint) hint.hidden = true
+  })
+  categoryGridEl?.querySelectorAll('.ledger-drag').forEach((other) => {
+    if (other === row) return
+    other.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-target')
+  })
+  expenseDropPlace = place
+  expenseDropTargetId = target?.id ?? null
+  row.classList.add('is-drop-target')
+  row.classList.toggle('is-drop-before', place === 'before')
+  row.classList.toggle('is-drop-after', place === 'after')
+}
+
+function reorderExpense(sourceId, targetId, place) {
+  const month = currentMonth()
+  if (!reorderExpensesInCategory(month, sourceId, targetId, place)) return false
+  persist()
+  render()
+  showToast('Orden de gastos actualizado')
   return true
 }
 
@@ -2019,7 +2061,7 @@ function onExpenseDragStart(event) {
   event.dataTransfer.effectAllowed = 'move'
   row.classList.add('is-dragging')
   categoryGridEl.classList.add('is-reclassifying')
-  announceDnd(`Arrastrando «${item.name}». Suelta en otra categoría para reclasificarla.`)
+  announceDnd(`Arrastrando «${item.name}». Suelta sobre otro gasto para reordenar o en otra categoría para moverlo.`)
 }
 
 function onCategoryReorderStart(event) {
@@ -2087,10 +2129,28 @@ function onCategoryReorderOver(event) {
   setReorderTarget(card, place, source, target)
 }
 
+function onExpenseLedgerDragOver(event) {
+  const row = event.target.closest?.('.ledger-drag')
+  if (!row || !categoryGridEl.contains(row)) return false
+  const source = draggedExpense()
+  const targetId = row.dataset.expenseId
+  const target = currentMonth().expenses.find((entry) => entry.id === targetId)
+  if (!source || !target || source.categoryId !== target.categoryId || source.id === target.id) {
+    return false
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  event.dataTransfer.dropEffect = 'move'
+  const place = rowDropPlacement(row, event.clientY)
+  setExpenseReorderTarget(row, place, source, target)
+  return true
+}
+
 function onCategoryDragOver(event) {
   const types = Array.from(event.dataTransfer?.types ?? [])
   const draggingExpense = Boolean(dragExpenseId) || types.includes(DRAG_MIME)
   if (!draggingExpense) return
+  if (onExpenseLedgerDragOver(event)) return
   const card = event.target.closest?.('.category-card')
   if (!card || !categoryGridEl.contains(card)) {
     clearDropTargets()
@@ -2128,6 +2188,23 @@ function onCategoryReorderDrop(event) {
   reorderCategory(sourceId, targetId, place)
 }
 
+function onExpenseLedgerDrop(event) {
+  const row = event.target.closest?.('.ledger-drag')
+  if (!row || !categoryGridEl.contains(row)) return false
+  event.preventDefault()
+  event.stopPropagation()
+  const sourceId =
+    dragExpenseId ||
+    event.dataTransfer?.getData(DRAG_MIME) ||
+    event.dataTransfer?.getData('text/plain')
+  const targetId = row.dataset.expenseId
+  const place = expenseDropTargetId === targetId && expenseDropPlace ? expenseDropPlace : rowDropPlacement(row, event.clientY)
+  endDrag()
+  if (!sourceId || !targetId) return true
+  reorderExpense(sourceId, targetId, place)
+  return true
+}
+
 function onCategoryDrop(event) {
   const card = event.target.closest?.('.category-card')
   if (!card || !categoryGridEl.contains(card)) return
@@ -2148,6 +2225,7 @@ function onGridDrop(event) {
     return
   }
   if (dragExpenseId) {
+    if (onExpenseLedgerDrop(event)) return
     onCategoryDrop(event)
     return
   }

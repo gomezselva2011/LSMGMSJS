@@ -1063,6 +1063,14 @@ p {
   opacity: 0.55;
 }
 
+.ledger-drag.is-drop-target.is-drop-before {
+  box-shadow: inset 0 3px 0 var(--pine);
+}
+
+.ledger-drag.is-drop-target.is-drop-after {
+  box-shadow: inset 0 -3px 0 var(--pine);
+}
+
 .drag-grip {
   grid-area: grip;
   width: 1.15rem;

@@ -46,6 +46,8 @@ const {
   queueServerSave,
   flushServerSave,
   monthHasExpenses,
+  reorderExpensesInCategory,
+  expensesInCategory,
   GASTOS_API_PATH,
 } = await import('./storage.js')
 
@@ -522,6 +524,28 @@ describe('loadHousehold server store', () => {
     assert.equal(
       puts.at(-1).months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-tc-melissa').amount,
       80000,
+    )
+  })
+})
+
+describe('reorderExpensesInCategory', () => {
+  it('reorders within a category and preserves flat array order for save', () => {
+    const month = {
+      categories: [{ id: 'cat-a', name: 'A' }, { id: 'cat-b', name: 'B' }],
+      expenses: [
+        { id: 'e1', name: 'Uno', categoryId: 'cat-a', amount: 1 },
+        { id: 'e2', name: 'Dos', categoryId: 'cat-a', amount: 2 },
+        { id: 'e3', name: 'Tres', categoryId: 'cat-b', amount: 3 },
+      ],
+    }
+    assert.equal(reorderExpensesInCategory(month, 'e2', 'e1', 'before'), true)
+    assert.deepEqual(
+      expensesInCategory(month, 'cat-a').map((entry) => entry.id),
+      ['e2', 'e1'],
+    )
+    assert.deepEqual(
+      month.expenses.map((entry) => entry.id),
+      ['e2', 'e1', 'e3'],
     )
   })
 })

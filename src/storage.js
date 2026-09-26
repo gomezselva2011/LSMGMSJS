@@ -239,6 +239,46 @@ export function reorderCategories(month, sourceId, targetId, place) {
   return true
 }
 
+/** Reorder expenses within one category; updates month.expenses flat order for save. */
+export function reorderExpensesInCategory(month, sourceId, targetId, place) {
+  if (!month || !Array.isArray(month.expenses)) return false
+  const source = month.expenses.find((entry) => entry.id === sourceId)
+  const target = month.expenses.find((entry) => entry.id === targetId)
+  if (!source || !target || source.categoryId !== target.categoryId) return false
+  const catId = source.categoryId
+  const inCat = month.expenses.filter((entry) => entry.categoryId === catId)
+  const from = inCat.findIndex((entry) => entry.id === sourceId)
+  let to = inCat.findIndex((entry) => entry.id === targetId)
+  if (from < 0 || to < 0 || from === to) return false
+  const reordered = [...inCat]
+  const [moved] = reordered.splice(from, 1)
+  if (place === 'after') to += 1
+  if (from < to) to -= 1
+  reordered.splice(to, 0, moved)
+  const unchanged = reordered.every((entry, index) => entry.id === inCat[index].id)
+  if (unchanged) return false
+  const result = []
+  let replaced = false
+  for (const entry of month.expenses) {
+    if (entry.categoryId === catId) {
+      if (!replaced) {
+        result.push(...reordered)
+        replaced = true
+      }
+      continue
+    }
+    result.push(entry)
+  }
+  if (!replaced) result.push(...reordered)
+  month.expenses = result
+  return true
+}
+
+export function expensesInCategory(month, categoryId) {
+  if (!month?.expenses) return []
+  return month.expenses.filter((entry) => entry.categoryId === categoryId)
+}
+
 export function normalizeState(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return createInitialState()
   if (!state.months || typeof state.months !== 'object' || Array.isArray(state.months)) {
