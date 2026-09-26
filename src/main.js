@@ -835,10 +835,15 @@ function syncViewVisibility() {
   const analytics = document.querySelector('#analytics')
   const bolsas = document.querySelector('#bolsas')
   const monthTools = document.querySelector('#month-tools')
-  if (budget) budget.hidden = currentView !== 'budget'
+  const isBudget = currentView === 'budget'
+  if (budget) budget.hidden = !isBudget
   if (analytics) analytics.hidden = currentView !== 'analytics'
   if (bolsas) bolsas.hidden = currentView !== 'bolsas'
-  if (monthTools) monthTools.hidden = currentView !== 'budget'
+  if (monthTools) monthTools.hidden = false
+  document.querySelector('.month-nav')?.toggleAttribute('hidden', !isBudget)
+  document.querySelector('#delete-month')?.toggleAttribute('hidden', !isBudget)
+  document.querySelector('#create-adjacent-wrap')?.toggleAttribute('hidden', !isBudget)
+  document.querySelector('#saved-months')?.toggleAttribute('hidden', !isBudget)
 }
 
 function renderViewTabs() {
