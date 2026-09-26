@@ -183,15 +183,29 @@ export async function seedBolsaIfEmpty(db) {
 }
 
 async function ensureMissingStandardBolsas(db) {
-  let inserted = 0
+  const insertedIds = []
   for (const { bolsa, movements } of allStandardBolsaSeeds()) {
     const existing = await getRow(db, 'SELECT id FROM bolsas WHERE id = ?', bolsa.id)
     if (existing) continue
     await insertBolsaWithMovements(db, bolsa, movements)
-    inserted += 1
+    insertedIds.push(bolsa.id)
   }
-  return inserted
+  return insertedIds
 }
+
+const BOLSA_CAPITAL_CHAIN_META = 'bolsa_capital_chain_v1'
+
+async function ensureBolsaCapitalChainMigrated(db) {
+  if (await getMeta(db, BOLSA_CAPITAL_CHAIN_META)) return
+  const bolsaIds = await allRows(db, 'SELECT id FROM bolsas')
+  for (const row of bolsaIds) {
+    await recomputeBolsaSnapshot(db, row.id)
+  }
+  await setMeta(db, BOLSA_CAPITAL_CHAIN_META, '1')
+}
+
+/** @type {WeakMap<object, true>} */
+const bolsaReadyByDb = new WeakMap()
 
 async function migrateBolsaBudgetLinks(db) {
   await runSql(
@@ -203,14 +217,16 @@ async function migrateBolsaBudgetLinks(db) {
 }
 
 export async function ensureBolsaReady(db) {
+  if (bolsaReadyByDb.has(db)) return
   await ensureBolsaSchema(db)
   await seedBolsaIfEmpty(db)
-  await ensureMissingStandardBolsas(db)
+  const insertedIds = await ensureMissingStandardBolsas(db)
   await migrateBolsaBudgetLinks(db)
-  const bolsaIds = await allRows(db, 'SELECT id FROM bolsas')
-  for (const row of bolsaIds) {
-    await recomputeBolsaSnapshot(db, row.id)
+  for (const bolsaId of insertedIds) {
+    await recomputeBolsaSnapshot(db, bolsaId)
   }
+  await ensureBolsaCapitalChainMigrated(db)
+  bolsaReadyByDb.set(db, true)
 }
 
 export async function updateBolsaBudgetLink(db, bolsaId, budgetExpenseId) {
