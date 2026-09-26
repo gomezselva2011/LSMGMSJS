@@ -196,6 +196,10 @@ async function ensureMissingStandardBolsas(db) {
 /** Bump when standard bolsa seeds or migrations change. */
 const BOLSA_INIT_VERSION = '4'
 
+/** Skip repeated Turso/meta work within one Node process (Render cold start + many API hits). */
+/** @type {WeakMap<object, string>} */
+const bolsaReadyVersionByDb = new WeakMap()
+
 async function migrateBolsaBudgetLinks(db) {
   await runSql(
     db,
@@ -206,16 +210,20 @@ async function migrateBolsaBudgetLinks(db) {
 }
 
 export async function ensureBolsaReady(db) {
+  if (bolsaReadyVersionByDb.get(db) === BOLSA_INIT_VERSION) return
+
   await ensureBolsaSchema(db)
   const initDone = await getMeta(db, 'bolsa_init_version')
   if (initDone === BOLSA_INIT_VERSION) {
     await ensureMissingStandardBolsas(db)
+    bolsaReadyVersionByDb.set(db, BOLSA_INIT_VERSION)
     return
   }
   await seedBolsaIfEmpty(db)
   await ensureMissingStandardBolsas(db)
   await migrateBolsaBudgetLinks(db)
   await setMeta(db, 'bolsa_init_version', BOLSA_INIT_VERSION)
+  bolsaReadyVersionByDb.set(db, BOLSA_INIT_VERSION)
 }
 
 export async function updateBolsaBudgetLink(db, bolsaId, budgetExpenseId) {
