@@ -2328,7 +2328,7 @@ function showServerLoading() {
     bootEl.hidden = false
     bootEl.classList.remove('boot-error')
   }
-  setBootMessage(SERVER_LOADING_COPY, 'Melissa y Lenin')
+  setBootMessage(SERVER_LOADING_COPY, 'Lenin y Melissa')
   if (bootErrorEl) {
     bootErrorEl.hidden = true
     bootErrorEl.textContent = ''

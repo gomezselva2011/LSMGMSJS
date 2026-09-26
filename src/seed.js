@@ -2,7 +2,7 @@
 
 import { DEFAULT_EXCHANGE_RATE } from './money.js'
 
-export const HOUSEHOLD = 'Melissa y Lenin'
+export const HOUSEHOLD = 'Lenin y Melissa'
 export const SEEDED_MONTH = '2026-10'
 export const STORAGE_KEY = 'gastos-hogar-v1'
 export const LEGACY_STORAGE_KEYS = [
