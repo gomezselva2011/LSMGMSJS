@@ -83,6 +83,8 @@ const detailsForm = document.querySelector('#details-form')
 const moveDialog = document.querySelector('#move-dialog')
 
 const toastEl = document.querySelector('#toast')
+const saveBudgetBtn = document.querySelector('#save-budget')
+const saveFeedbackEl = document.querySelector('#save-feedback')
 const dndLiveEl = document.querySelector('#dnd-live')
 
 let state = null
@@ -91,8 +93,12 @@ let persistWarning = ''
 let formContext = null
 let confirmContext = null
 let toastTimer = 0
+let saveFeedbackTimer = 0
+let saveButtonResetTimer = 0
 let toastViewportBound = false
+let lastToastAnchor = null
 const TOAST_MARGIN_PX = 16
+const SAVE_FEEDBACK_MS = 4000
 let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
 let compareFrom = null
@@ -213,30 +219,96 @@ function bindToastViewport() {
   toastViewportBound = true
   const reposition = () => {
     if (toastEl.hidden) return
-    positionToastInView()
+    positionToastInView({ anchor: lastToastAnchor })
   }
   window.visualViewport.addEventListener('resize', reposition)
   window.visualViewport.addEventListener('scroll', reposition)
   window.addEventListener('scroll', reposition, { passive: true })
 }
 
-/** Keep the toast inside the visible viewport (mobile scroll, keyboard, dialogs). */
-function positionToastInView() {
-  if (!toastEl || toastEl.hidden) return
+function visibleViewportRect() {
   const vv = window.visualViewport
   if (!vv) {
-    resetToastPosition()
-    return
+    return {
+      top: 0,
+      left: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }
+  }
+  return {
+    top: vv.offsetTop,
+    left: vv.offsetLeft,
+    width: vv.width,
+    height: vv.height,
+  }
+}
+
+function rectIntersectsViewport(rect, view) {
+  const right = view.left + view.width
+  const bottom = view.top + view.height
+  return rect.bottom >= view.top && rect.top <= bottom && rect.right >= view.left && rect.left <= right
+}
+
+/** Keep the toast inside the visible viewport (mobile scroll, keyboard, dialogs). */
+function positionToastInView(options = {}) {
+  if (!toastEl || toastEl.hidden) return
+  const view = visibleViewportRect()
+  const anchor = options.anchor
+  if (anchor && anchor.isConnected) {
+    const rect = anchor.getBoundingClientRect()
+    if (rectIntersectsViewport(rect, view)) {
+      const height = toastEl.offsetHeight || 44
+      let top = rect.bottom + 10
+      if (top + height > view.top + view.height - TOAST_MARGIN_PX) {
+        top = rect.top - height - 10
+      }
+      top = Math.max(view.top + TOAST_MARGIN_PX, Math.min(top, view.top + view.height - height - TOAST_MARGIN_PX))
+      const centerX = rect.left + rect.width / 2
+      const left = Math.min(
+        Math.max(centerX, view.left + 72),
+        view.left + view.width - 72,
+      )
+      toastEl.style.bottom = 'auto'
+      toastEl.style.top = `${top}px`
+      toastEl.style.left = `${left}px`
+      toastEl.style.transform = 'translateX(-50%)'
+      return
+    }
   }
   const height = toastEl.offsetHeight || 44
-  let top = vv.offsetTop + vv.height - height - TOAST_MARGIN_PX
-  const minTop = vv.offsetTop + TOAST_MARGIN_PX
-  if (top < minTop) top = minTop
-  const left = vv.offsetLeft + vv.width / 2
+  const top = view.top + view.height / 2 - height / 2
+  const left = view.left + view.width / 2
   toastEl.style.bottom = 'auto'
   toastEl.style.top = `${top}px`
   toastEl.style.left = `${left}px`
   toastEl.style.transform = 'translateX(-50%)'
+}
+
+function showInlineSaveFeedback(message, { error = false } = {}) {
+  if (saveFeedbackEl) {
+    saveFeedbackEl.hidden = false
+    saveFeedbackEl.textContent = message
+    saveFeedbackEl.classList.toggle('is-error', error)
+    window.clearTimeout(saveFeedbackTimer)
+    saveFeedbackTimer = window.setTimeout(() => {
+      saveFeedbackEl.hidden = true
+      saveFeedbackEl.textContent = ''
+      saveFeedbackEl.classList.remove('is-error')
+    }, SAVE_FEEDBACK_MS)
+  }
+  if (saveBudgetBtn && !error) {
+    const label = saveBudgetBtn.dataset.defaultLabel || saveBudgetBtn.textContent
+    if (!saveBudgetBtn.dataset.defaultLabel) saveBudgetBtn.dataset.defaultLabel = label
+    saveBudgetBtn.textContent = message
+    saveBudgetBtn.classList.add('is-saved')
+    saveBudgetBtn.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+    window.clearTimeout(saveButtonResetTimer)
+    saveButtonResetTimer = window.setTimeout(() => {
+      saveBudgetBtn.textContent = saveBudgetBtn.dataset.defaultLabel || 'Guardar'
+      saveBudgetBtn.classList.remove('is-saved')
+    }, SAVE_FEEDBACK_MS)
+  }
 }
 
 function showToast(message, options = {}) {
@@ -244,12 +316,13 @@ function showToast(message, options = {}) {
   toastEl.textContent = message
   toastEl.hidden = false
   bindToastViewport()
-  positionToastInView()
-  window.requestAnimationFrame(() => positionToastInView())
+  lastToastAnchor = options.anchor || null
+  positionToastInView({ anchor: lastToastAnchor })
+  window.requestAnimationFrame(() => positionToastInView({ anchor: lastToastAnchor }))
   window.clearTimeout(toastTimer)
   const duration =
     options.duration ??
-    (message === 'Guardado' || /guardad/i.test(String(message)) ? 3200 : 2200)
+    (message === 'Guardado' || /guardad/i.test(String(message)) ? 4000 : 2200)
   toastTimer = window.setTimeout(() => {
     toastEl.hidden = true
     toastEl.textContent = ''
@@ -264,12 +337,14 @@ async function saveNow() {
     await flushServerSave()
     persistWarning = ''
     renderBanner()
-    showToast('Guardado')
+    showInlineSaveFeedback('Guardado ✓')
+    showToast('Guardado', { anchor: saveBudgetBtn })
   } catch (error) {
     console.error(error)
     persistWarning = 'No se pudo guardar en el servidor. Reintenta con Guardar.'
     renderBanner()
-    showToast('No se pudo guardar')
+    showInlineSaveFeedback('No se guardó', { error: true })
+    showToast('No se pudo guardar', { anchor: saveBudgetBtn })
   }
 }
 

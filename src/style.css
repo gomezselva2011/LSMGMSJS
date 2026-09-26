@@ -339,6 +339,23 @@ p {
   gap: 0.45rem;
 }
 
+.save-feedback {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--pine);
+  white-space: nowrap;
+}
+
+.save-feedback.is-error {
+  color: var(--rose);
+}
+
+#save-budget.is-saved {
+  background: var(--pine);
+  border-color: var(--pine);
+  color: #f4fbf7;
+}
+
 .cta-row {
   display: flex;
   flex-wrap: wrap;
