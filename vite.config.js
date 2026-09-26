@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { authPlugin } from './server/auth.js'
 import { gastosApiPlugin } from './server/gastos-api.js'
+import { bolsasApiPlugin } from './server/bolsas-api.js'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -16,6 +17,9 @@ export default defineConfig({
   plugins: [
     auth,
     gastosApiPlugin({
+      getUser: (req) => auth.store.userFromRequest(req),
+    }),
+    bolsasApiPlugin({
       getUser: (req) => auth.store.userFromRequest(req),
     }),
   ],

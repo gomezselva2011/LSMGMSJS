@@ -417,7 +417,7 @@ describe('loadHousehold server store', () => {
   it('after login, sqlite October wins over stale seed localStorage and is not PUT back', async () => {
     const edited = octoberWithCharges([LENTES, CELULAR])
     const camioneta = edited.expenses.find((item) => item.id === 'exp-ot-camioneta')
-    camioneta.name = 'Himla PERSIST-TEST'
+    camioneta.name = 'Tiggo4 PERSIST-TEST'
     camioneta.amount = 62001
     stored = {
       version: 1,
@@ -429,13 +429,13 @@ describe('loadHousehold server store', () => {
     const row = loaded.state.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-camioneta')
     const seedRow = createOctoberSeed().expenses.find((item) => item.id === 'exp-ot-camioneta')
     assert.equal(loaded.fromServer, true)
-    assert.equal(row.name, 'Himla PERSIST-TEST')
+    assert.equal(row.name, 'Tiggo4 PERSIST-TEST')
     assert.equal(row.amount, 62001)
-    assert.equal(seedRow.name, 'Mensualidad camioneta')
+    assert.equal(seedRow.name, 'Cuota Tiggo 4 Pro (CrediQ)')
     assert.equal(puts.length, 0)
     const local = JSON.parse(window.localStorage.getItem(STORAGE_KEY))
     const localRow = local.months[SEEDED_MONTH].expenses.find((item) => item.id === 'exp-ot-camioneta')
-    assert.equal(localRow.name, 'Himla PERSIST-TEST')
+    assert.equal(localRow.name, 'Tiggo4 PERSIST-TEST')
   })
 
   it('does not re-seed October when months[2026-10] already has expenses', async () => {

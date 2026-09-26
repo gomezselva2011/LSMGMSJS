@@ -3089,3 +3089,93 @@ body.is-readonly .admin-only {
     display: none !important;
   }
 }
+
+.view-bolsas {
+  padding-bottom: 0.5rem;
+}
+
+.bolsas-panel {
+  margin-top: 0.5rem;
+}
+
+.bolsa-hero h2 {
+  margin: 0.15rem 0 0.35rem;
+  font-family: var(--display);
+}
+
+.bolsa-meta {
+  color: var(--muted);
+  margin: 0 0 1rem;
+  font-size: var(--text-sm);
+}
+
+.bolsa-metrics {
+  margin-bottom: 0.75rem;
+}
+
+.bolsa-metric-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 0 0 0.35rem;
+}
+
+.bolsa-projection {
+  max-width: 46rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+  line-height: 1.45;
+}
+
+.bolsa-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+}
+
+.bolsa-table-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+}
+
+.bolsa-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.bolsa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.bolsa-table th,
+.bolsa-table td {
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.bolsa-table th {
+  font-weight: 650;
+  background: var(--paper);
+}
+
+.bolsa-table td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bolsa-empty {
+  color: var(--muted);
+}
+
+.bolsa-error {
+  color: var(--rose);
+}

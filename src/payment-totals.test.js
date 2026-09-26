@@ -100,7 +100,7 @@ describe('monthPaidUnpaidTotals', () => {
     assert.equal(totals.ok, true)
     assert.equal(totals.paidUsd, 0)
     assert.equal(totals.unpaidUsd, budget.expensesUsd)
-    assert.equal(totals.unpaidUsd, 498114)
+    assert.equal(totals.unpaidUsd, 479425)
   })
 
   it('moves a paid parent from no pagado to pagado without counting charges', () => {
@@ -156,7 +156,7 @@ describe('analyticsHtml payment cards', () => {
     assert.ok(unpaid < mom)
     assert.ok(mom < bars)
     assert.match(html, /id="analytics-paid"[^>]*>\$0\.00/)
-    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,981\.14/)
+    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,794\.25/)
   })
 
   it('renders paid totals after a parent checkbox is marked pagado', () => {
@@ -168,6 +168,6 @@ describe('analyticsHtml payment cards', () => {
       { currentKey: '2026-10' },
     )
     assert.match(html, /id="analytics-paid"[^>]*>\$172\.00/)
-    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,809\.14/)
+    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,622\.25/)
   })
 })
