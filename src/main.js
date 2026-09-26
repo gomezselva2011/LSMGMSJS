@@ -47,6 +47,7 @@ import {
   parseRate,
 } from './money.js'
 import { analyticsHtml, MODE_CLASSIFICATION, MODE_RUBRO, MODE_TOTALS, parseAnalyticsMode } from './analytics.js'
+import { bolsaPanelHtml, fetchBolsaDetail, fetchBolsaList, TIGGO_BOLSA_ID } from './bolsa.js'
 import {
   inferRubro,
   isKnownRubro,
@@ -103,6 +104,9 @@ const TOAST_MARGIN_PX = 16
 const SAVE_FEEDBACK_MS = 4000
 let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
+let bolsaDetail = null
+let bolsaLoadError = ''
+let bolsaLoading = false
 let compareFrom = null
 let compareTo = null
 let selectedRubroId = null
@@ -801,15 +805,30 @@ function renderCategories() {
   categoryGridEl.innerHTML = cards.join('')
 }
 
+function normalizeView(view) {
+  if (view === 'analytics') return 'analytics'
+  if (view === 'bolsas') return 'bolsas'
+  return 'budget'
+}
+
 function setView(view) {
-  currentView = view === 'analytics' ? 'analytics' : 'budget'
+  currentView = normalizeView(view)
   expenseSnippet?.hide()
-  const budget = document.querySelector('.view-budget')
-  const analytics = document.querySelector('#analytics')
-  if (budget) budget.hidden = currentView !== 'budget'
-  if (analytics) analytics.hidden = currentView !== 'analytics'
+  syncViewVisibility()
   renderViewTabs()
   if (currentView === 'analytics') renderAnalytics()
+  if (currentView === 'bolsas') renderBolsas()
+}
+
+function syncViewVisibility() {
+  const budget = document.querySelector('.view-budget')
+  const analytics = document.querySelector('#analytics')
+  const bolsas = document.querySelector('#bolsas')
+  const monthTools = document.querySelector('#month-tools')
+  if (budget) budget.hidden = currentView !== 'budget'
+  if (analytics) analytics.hidden = currentView !== 'analytics'
+  if (bolsas) bolsas.hidden = currentView !== 'bolsas'
+  if (monthTools) monthTools.hidden = currentView !== 'budget'
 }
 
 function renderViewTabs() {
@@ -819,7 +838,52 @@ function renderViewTabs() {
   tabs.innerHTML = `
     <button type="button" class="view-tab${currentView === 'budget' ? ' is-current' : ''}" data-action="show-view" data-view="budget" ${currentView === 'budget' ? 'aria-current="page"' : ''}>Presupuesto</button>
     <button type="button" class="view-tab${currentView === 'analytics' ? ' is-current' : ''}" data-action="show-view" data-view="analytics" ${currentView === 'analytics' ? 'aria-current="page"' : ''}>Analítica</button>
+    <button type="button" class="view-tab${currentView === 'bolsas' ? ' is-current' : ''}" data-action="show-view" data-view="bolsas" ${currentView === 'bolsas' ? 'aria-current="page"' : ''}>Bolsas</button>
   `
+}
+
+async function loadBolsaDetail() {
+  if (bolsaLoading) return
+  bolsaLoading = true
+  bolsaLoadError = ''
+  try {
+    const list = await fetchBolsaList()
+    const pick = list.find((item) => item.id === TIGGO_BOLSA_ID) || list[0]
+    if (!pick) {
+      bolsaDetail = null
+      return
+    }
+    bolsaDetail = await fetchBolsaDetail(pick.id)
+  } catch (error) {
+    bolsaDetail = null
+    bolsaLoadError = error?.message || 'No se pudo cargar la bolsa.'
+  } finally {
+    bolsaLoading = false
+  }
+}
+
+function renderBolsas() {
+  const panel = document.querySelector('#bolsas-panel')
+  if (!panel) return
+  if (bolsaLoading) {
+    panel.innerHTML = '<p class="bolsa-empty">Cargando bolsa…</p>'
+    loadBolsaDetail().then(() => {
+      if (currentView === 'bolsas') renderBolsas()
+    })
+    return
+  }
+  if (!bolsaDetail && !bolsaLoadError) {
+    panel.innerHTML = '<p class="bolsa-empty">Cargando bolsa…</p>'
+    loadBolsaDetail().then(() => {
+      if (currentView === 'bolsas') renderBolsas()
+    })
+    return
+  }
+  if (bolsaLoadError) {
+    panel.innerHTML = `<p class="bolsa-empty bolsa-error">${escapeHtml(bolsaLoadError)}</p>`
+    return
+  }
+  panel.innerHTML = bolsaPanelHtml(bolsaDetail)
 }
 
 function renderAnalytics() {
@@ -858,11 +922,9 @@ function render() {
   renderIncomes()
   renderCategories()
   renderViewTabs()
-  const budget = document.querySelector('.view-budget')
-  const analytics = document.querySelector('#analytics')
-  if (budget) budget.hidden = currentView !== 'budget'
-  if (analytics) analytics.hidden = currentView !== 'analytics'
+  syncViewVisibility()
   if (currentView === 'analytics') renderAnalytics()
+  if (currentView === 'bolsas') renderBolsas()
   if (detailsDialog?.open && detailsExpenseId) renderCardDialog()
 }
 
@@ -1627,6 +1689,7 @@ function applyExchangeRate(raw) {
   renderSummary()
   renderCategories()
   if (currentView === 'analytics') renderAnalytics()
+  if (currentView === 'bolsas') renderBolsas()
   if (detailsDialog?.open) {
     updateSuggestButtons()
     renderCardDialog()

@@ -12,7 +12,7 @@ import {
 
 export { DRIVER_SQLITE, shouldUseTurso }
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 export const ROLE_ADMIN = 'admin'
 export const ROLE_VIEWER = 'viewer'
 
@@ -776,5 +776,7 @@ export async function migrateLegacyJson(db, options = {}) {
 export async function ensureGastosDb(options = {}) {
   const db = await openGastosDb(options)
   await migrateLegacyJson(db, options)
+  const { ensureBolsaReady } = await import('./bolsa-db.js')
+  await ensureBolsaReady(db)
   return db
 }

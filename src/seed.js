@@ -64,11 +64,12 @@ export function createOctoberSeed() {
 
       {
         id: 'exp-ot-camioneta',
-        name: 'Mensualidad camioneta',
-        amount: 62000,
+        name: 'Cuota Tiggo 4 Pro (CrediQ)',
+        amount: 43311,
         categoryId: CATEGORY_OTROS,
-        dueDay: 1,
+        dueDay: 5,
         rubro: 'camionetas',
+        currency: 'USD',
       },
       {
         id: 'exp-ot-internet-lenin',
