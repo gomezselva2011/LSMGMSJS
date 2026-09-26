@@ -3094,6 +3094,28 @@ body.is-readonly .admin-only {
   padding-bottom: 0.5rem;
 }
 
+.bolsa-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.bolsa-tab {
+  border: 1px solid var(--border-subtle, #d8dee9);
+  background: var(--surface-raised, #fff);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bolsa-tab.is-current {
+  border-color: var(--accent, #2563eb);
+  background: color-mix(in srgb, var(--accent, #2563eb) 12%, white);
+  font-weight: 600;
+}
+
 .bolsas-panel {
   margin-top: 0.5rem;
 }

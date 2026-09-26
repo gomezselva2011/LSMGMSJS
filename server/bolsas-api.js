@@ -1,5 +1,12 @@
 import { ensureGastosDb, resolveDbPath } from './db.js'
-import { applyBolsaPayment, deleteBolsaMovement, ensureBolsaReady, listBolsas, readBolsa } from './bolsa-db.js'
+import {
+  applyBolsaPayment,
+  deleteBolsaMovement,
+  ensureBolsaReady,
+  listBolsas,
+  readBolsa,
+  updateBolsaBudgetLink,
+} from './bolsa-db.js'
 import { ROLE_ADMIN } from './household-users.js'
 
 export const BOLSAS_API_PREFIX = '/api/bolsas'
@@ -14,6 +21,9 @@ export function parseBolsasApiUrl(url = '') {
   if (parts.length === 1) return { list: false, id: decodeURIComponent(parts[0]) }
   if (parts.length === 2 && parts[1] === 'apply-payment') {
     return { applyPayment: true, id: decodeURIComponent(parts[0]) }
+  }
+  if (parts.length === 2 && parts[1] === 'budget-link') {
+    return { budgetLink: true, id: decodeURIComponent(parts[0]) }
   }
   if (parts.length === 3 && parts[1] === 'movements') {
     return {
@@ -78,7 +88,7 @@ export async function handleBolsasApi(req, res, next, options = {}) {
       return true
     }
 
-    const mutating = req.method === 'POST' || req.method === 'DELETE'
+    const mutating = req.method === 'POST' || req.method === 'DELETE' || req.method === 'PATCH'
     if (mutating && user.role !== ROLE_ADMIN) {
       sendJson(res, 403, { error: 'Solo un admin puede modificar la bolsa.' })
       return true
@@ -109,6 +119,41 @@ export async function handleBolsasApi(req, res, next, options = {}) {
           error.status ||
           (error.code === 'NOT_FOUND' ? 404 : error.code === 'NOT_DELETABLE' ? 403 : 400)
         sendJson(res, status, { error: error.message || 'No se pudo quitar el pago.' })
+      }
+      return true
+    }
+
+    if (match.budgetLink) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Allow', 'PATCH, OPTIONS')
+        res.end()
+        return true
+      }
+      if (req.method !== 'PATCH') {
+        res.statusCode = 405
+        res.setHeader('Allow', 'PATCH, OPTIONS')
+        res.end()
+        return true
+      }
+
+      const db = await ensureGastosDb(dbOptions)
+      await ensureBolsaReady(db)
+
+      let body
+      try {
+        body = JSON.parse((await readRequestBody(req)) || '{}')
+      } catch {
+        sendJson(res, 400, { error: 'JSON inválido' })
+        return true
+      }
+
+      try {
+        const bolsa = await updateBolsaBudgetLink(db, match.id, body.budgetExpenseId)
+        sendJson(res, 200, bolsa)
+      } catch (error) {
+        const status = error.status || (error.code === 'NOT_FOUND' ? 404 : 400)
+        sendJson(res, status, { error: error.message || 'No se pudo guardar el enlace.' })
       }
       return true
     }

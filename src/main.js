@@ -54,6 +54,7 @@ import {
   fetchBolsaDetail,
   fetchBolsaList,
   TIGGO_BOLSA_ID,
+  updateBolsaBudgetLinkRequest,
 } from './bolsa.js'
 import {
   inferRubro,
@@ -112,6 +113,8 @@ const SAVE_FEEDBACK_MS = 4000
 let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
 let bolsaDetail = null
+let bolsaList = []
+let selectedBolsaId = TIGGO_BOLSA_ID
 let bolsaLoadError = ''
 let bolsaLoading = false
 let compareFrom = null
@@ -849,17 +852,22 @@ function renderViewTabs() {
   `
 }
 
-async function loadBolsaDetail() {
+async function loadBolsaDetail(bolsaId = selectedBolsaId) {
   if (bolsaLoading) return
   bolsaLoading = true
   bolsaLoadError = ''
   try {
-    const list = await fetchBolsaList()
-    const pick = list.find((item) => item.id === TIGGO_BOLSA_ID) || list[0]
-    if (!pick) {
+    bolsaList = await fetchBolsaList()
+    if (!bolsaList.length) {
       bolsaDetail = null
+      selectedBolsaId = ''
       return
     }
+    const pick =
+      bolsaList.find((item) => item.id === bolsaId) ||
+      bolsaList.find((item) => item.id === TIGGO_BOLSA_ID) ||
+      bolsaList[0]
+    selectedBolsaId = pick.id
     bolsaDetail = await fetchBolsaDetail(pick.id)
   } catch (error) {
     bolsaDetail = null
@@ -890,7 +898,10 @@ function renderBolsas() {
     panel.innerHTML = `<p class="bolsa-empty bolsa-error">${escapeHtml(bolsaLoadError)}</p>`
     return
   }
-  panel.innerHTML = bolsaPanelHtml(bolsaDetail, state, { canEdit: canEdit() })
+  panel.innerHTML = bolsaPanelHtml(bolsaDetail, state, {
+    canEdit: canEdit(),
+    bolsas: bolsaList,
+  })
 }
 
 function renderAnalytics() {
@@ -2377,6 +2388,15 @@ function onAppClick(event) {
     openOverdueLine(id)
   } else if (action === 'bolsa-delete-movement') {
     confirmRemoveBolsaMovement(button.dataset.movementId)
+  } else if (action === 'bolsa-select') {
+    const nextId = button.dataset.bolsaId
+    if (!nextId || nextId === selectedBolsaId) return
+    selectedBolsaId = nextId
+    bolsaDetail = null
+    renderBolsas()
+    loadBolsaDetail(nextId).then(() => {
+      if (currentView === 'bolsas') renderBolsas()
+    })
   }
 }
 
@@ -2398,6 +2418,19 @@ function confirmRemoveBolsaMovement(movementId) {
         .catch((error) => showToast(error?.message || 'No se pudo quitar el pago.'))
     },
   })
+}
+
+async function submitBolsaBudgetLink(form) {
+  if (!canEdit() || !bolsaDetail?.id) return
+  const budgetExpenseId = form.budgetExpenseId?.value?.trim() || ''
+  if (!budgetExpenseId) return
+  try {
+    bolsaDetail = await updateBolsaBudgetLinkRequest(bolsaDetail.id, budgetExpenseId)
+    showToast('Enlace al presupuesto guardado.')
+    renderBolsas()
+  } catch (error) {
+    showToast(error?.message || 'No se pudo guardar el enlace.')
+  }
 }
 
 async function submitBolsaApplyPayment(form) {
@@ -2812,6 +2845,12 @@ function bindEvents() {
     if (action) action()
   })
   document.querySelector('#bolsas-panel')?.addEventListener('submit', (event) => {
+    const linkForm = event.target.closest('form[data-action="bolsa-set-budget-link"]')
+    if (linkForm) {
+      event.preventDefault()
+      submitBolsaBudgetLink(linkForm).catch((error) => console.error(error))
+      return
+    }
     const form = event.target.closest('form[data-action="bolsa-apply-payment"]')
     if (!form) return
     event.preventDefault()

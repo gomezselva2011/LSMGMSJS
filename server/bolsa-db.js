@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { getMeta, isMonthKey, readHouseholdState, setMeta, writeHouseholdState } from './db.js'
-import { createTiggoBolsaSeed } from './bolsa-seed.js'
+import { allStandardBolsaSeeds } from './bolsa-seed.js'
 import {
   TIGGO_BOLSA_ID,
   TIGGO_BUDGET_EXPENSE_ID,
@@ -178,9 +178,19 @@ async function insertBolsaWithMovements(db, bolsa, movements) {
 export async function seedBolsaIfEmpty(db) {
   const row = await getRow(db, 'SELECT COUNT(*) AS n FROM bolsas')
   if (row && row.n > 0) return false
-  const { bolsa, movements } = createTiggoBolsaSeed()
-  await insertBolsaWithMovements(db, bolsa, movements)
+  await ensureMissingStandardBolsas(db)
   return true
+}
+
+async function ensureMissingStandardBolsas(db) {
+  let inserted = 0
+  for (const { bolsa, movements } of allStandardBolsaSeeds()) {
+    const existing = await getRow(db, 'SELECT id FROM bolsas WHERE id = ?', bolsa.id)
+    if (existing) continue
+    await insertBolsaWithMovements(db, bolsa, movements)
+    inserted += 1
+  }
+  return inserted
 }
 
 async function migrateBolsaBudgetLinks(db) {
@@ -195,7 +205,21 @@ async function migrateBolsaBudgetLinks(db) {
 export async function ensureBolsaReady(db) {
   await ensureBolsaSchema(db)
   await seedBolsaIfEmpty(db)
+  await ensureMissingStandardBolsas(db)
   await migrateBolsaBudgetLinks(db)
+}
+
+export async function updateBolsaBudgetLink(db, bolsaId, budgetExpenseId) {
+  const id = String(bolsaId || '').trim()
+  const expenseId = String(budgetExpenseId || '').trim()
+  if (!id) throw applicationError('Falta la bolsa.', 'INVALID')
+  if (!expenseId) throw applicationError('Elige una línea del presupuesto.', 'INVALID')
+
+  const row = await getRow(db, 'SELECT id FROM bolsas WHERE id = ?', id)
+  if (!row) throw applicationError('Bolsa no encontrada.', 'NOT_FOUND', 404)
+
+  await runSql(db, 'UPDATE bolsas SET budget_expense_id = ? WHERE id = ?', expenseId, id)
+  return readBolsa(db, id)
 }
 
 export async function listBolsas(db) {
@@ -277,9 +301,14 @@ function computeCapitalCentsForPayment(bolsa, paymentCents, currentCapitalCents)
   return Math.min(payment, cap)
 }
 
+const SEED_PAID_BY_BOLSA_ID = new Map(
+  allStandardBolsaSeeds().map(({ bolsa }) => [bolsa.id, Number(bolsa.paidInstallments) || 0]),
+)
+
 function seedPaidInstallmentsBaseline(bolsaId, bolsaRow) {
-  const { bolsa: seedBolsa } = createTiggoBolsaSeed()
-  if (bolsaId === seedBolsa.id) return Number(seedBolsa.paidInstallments) || 0
+  if (SEED_PAID_BY_BOLSA_ID.has(bolsaId)) {
+    return SEED_PAID_BY_BOLSA_ID.get(bolsaId)
+  }
   const paid = Number(bolsaRow?.paid_installments) || 0
   const pending = Number(bolsaRow?.pending_installments) || 0
   const total = Number(bolsaRow?.total_installments) || paid + pending

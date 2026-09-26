@@ -1,11 +1,25 @@
 /**
- * Seed data: Chery Tiggo 4 Pro only (CrediQ 0660000001280, placa M 419693), corte 26/09/2026.
- * Himla (cuenta 0660000001693, Tiggo 8 en papel) is a separate future bolsa — not included here.
+ * Seed data for household debt bolsas (PDF / Banpro cuts Sep 2026).
  */
 
-export const TIGGO_BOLSA_ID = 'bolsa-tiggo-4-crediq'
+import {
+  TIGGO_BOLSA_ID,
+  TIGGO_BUDGET_EXPENSE_ID,
+  HIMLA_BOLSA_ID,
+  HIMLA_BUDGET_EXPENSE_ID,
+  TC_MELISSA_BOLSA_ID,
+  TC_MELISSA_BUDGET_EXPENSE_ID,
+  SAN_ANDRES_BOLSA_ID,
+  SAN_ANDRES_BUDGET_EXPENSE_ID,
+} from '../src/bolsa-budget-link.js'
+
+export { TIGGO_BOLSA_ID }
 
 function usd(value) {
+  return Math.round(Number(value) * 100)
+}
+
+function nio(value) {
   return Math.round(Number(value) * 100)
 }
 
@@ -59,9 +73,251 @@ export function createTiggoBolsaSeed() {
     totalInstallments: 108,
     paidInstallments: 22,
     pendingInstallments: 86,
-    budgetExpenseId: 'exp-ot-camioneta',
+    budgetExpenseId: TIGGO_BUDGET_EXPENSE_ID,
     cutDate: '2026-09-26',
   }
 
   return { bolsa, movements }
+}
+
+/** @returns {{ bolsa: object, movements: object[] }} */
+export function createHimlaBolsaSeed() {
+  const movements = [
+    { id: 'mov-himla-01', appliedDate: '2026-01-20', receipt: '00019101185', paymentCents: usd(429.7), capitalCents: usd(350.0), balanceAfterCents: usd(23943.82), movementType: 'cuota' },
+    { id: 'mov-himla-02', appliedDate: '2026-02-21', receipt: '00019119831', paymentCents: usd(859.29), capitalCents: usd(319.25), balanceAfterCents: usd(23427.25), movementType: 'cuota' },
+    { id: 'mov-himla-03', appliedDate: '2026-03-20', receipt: '00019135797', paymentCents: usd(429.64), capitalCents: usd(273.54), balanceAfterCents: usd(23294.61), movementType: 'cuota' },
+    { id: 'mov-himla-04', appliedDate: '2026-04-20', receipt: '00019154663', paymentCents: usd(435.03), capitalCents: usd(300.89), balanceAfterCents: usd(23183.3), movementType: 'cuota' },
+    { id: 'mov-himla-05', appliedDate: '2026-05-19', receipt: '20261001541', paymentCents: usd(428.9), capitalCents: usd(289.74), balanceAfterCents: usd(23066.86), movementType: 'cuota' },
+    { id: 'mov-himla-06', appliedDate: '2026-06-20', receipt: '00019185989', paymentCents: usd(465.73), capitalCents: usd(297.95), balanceAfterCents: usd(22968.5), movementType: 'cuota' },
+    { id: 'mov-himla-07', appliedDate: '2026-06-24', receipt: '00019188029', paymentCents: usd(10.0), capitalCents: usd(0.0), balanceAfterCents: usd(22958.63), movementType: 'cuota' },
+    { id: 'mov-himla-08', appliedDate: '2026-07-20', receipt: '00019202910', paymentCents: usd(476.0), capitalCents: usd(287.0), balanceAfterCents: usd(22838.82), movementType: 'cuota' },
+    { id: 'mov-himla-09', appliedDate: '2026-08-31', receipt: '00019225134', paymentCents: usd(480.0), capitalCents: usd(295.0), balanceAfterCents: usd(22727.64), movementType: 'cuota' },
+    { id: 'mov-himla-10', appliedDate: '2026-09-06', receipt: '00019229424', paymentCents: usd(470.0), capitalCents: usd(161.5), balanceAfterCents: usd(22483.83), movementType: 'cuota' },
+  ]
+
+  const bolsa = {
+    id: HIMLA_BOLSA_ID,
+    name: 'Himla (CrediQ)',
+    creditor: 'CrediQ Inversiones Nicaragua S.A.',
+    product: 'Leasing F Financiero',
+    vehicle: 'CHERY / TIGGO 8 PRO MAX',
+    plate: 'M 456943',
+    accountNumber: '0660000001693',
+    currency: 'USD',
+    openingAmountCents: usd(24000),
+    capitalBalanceCents: usd(22740.04),
+    totalCurrentCents: usd(22786.86),
+    accruedInsuranceCents: usd(46.82),
+    interestRate: 15.0,
+    moraRate: 3.75,
+    paymentDay: 20,
+    installmentCents: usd(475.02),
+    totalInstallments: 107,
+    paidInstallments: 8,
+    pendingInstallments: 99,
+    budgetExpenseId: HIMLA_BUDGET_EXPENSE_ID,
+    cutDate: '2026-09-26',
+  }
+
+  return { bolsa, movements }
+}
+
+/** @returns {{ bolsa: object, movements: object[] }} */
+export function createTcMelissaBolsaSeed() {
+  const movements = [
+    {
+      id: 'mov-tc-mel-01',
+      appliedDate: '2026-08-10',
+      receipt: 'saldo-corte-ago',
+      paymentCents: 0,
+      capitalCents: 0,
+      balanceAfterCents: nio(155075.14),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-tc-mel-02',
+      appliedDate: '2026-08-28',
+      receipt: 'compras-ciclo',
+      paymentCents: nio(39047.59),
+      capitalCents: nio(39047.59),
+      balanceAfterCents: nio(194122.73),
+      movementType: 'extra_capital',
+    },
+    {
+      id: 'mov-tc-mel-03',
+      appliedDate: '2026-09-01',
+      receipt: 'GRACIAS POR SU PAGO',
+      paymentCents: nio(18000),
+      capitalCents: nio(18000),
+      balanceAfterCents: nio(176122.73),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-tc-mel-04',
+      appliedDate: '2026-09-03',
+      receipt: 'GRACIAS POR SU PAGO',
+      paymentCents: nio(12600),
+      capitalCents: nio(12600),
+      balanceAfterCents: nio(163622.73),
+      movementType: 'cuota',
+    },
+  ]
+
+  const bolsa = {
+    id: TC_MELISSA_BOLSA_ID,
+    name: 'TC Melissa (Ficohsa Visa)',
+    creditor: 'Banco Ficohsa de Nicaragua S.A.',
+    product: 'Visa Platino Disfruta+',
+    vehicle: null,
+    plate: null,
+    accountNumber: 'XXXXXXXXXXXX3992',
+    currency: 'NIO',
+    openingAmountCents: 0,
+    capitalBalanceCents: nio(163622.73),
+    totalCurrentCents: nio(163622.73),
+    accruedInsuranceCents: null,
+    interestRate: 45.0,
+    moraRate: 22.5,
+    paymentDay: 5,
+    installmentCents: nio(12020.41),
+    totalInstallments: null,
+    paidInstallments: null,
+    pendingInstallments: null,
+    budgetExpenseId: TC_MELISSA_BUDGET_EXPENSE_ID,
+    cutDate: '2026-09-10',
+  }
+
+  return { bolsa, movements }
+}
+
+/** @returns {{ bolsa: object, movements: object[] }} */
+export function createSanAndresBolsaSeed() {
+  const movements = [
+    {
+      id: 'mov-sa-01',
+      appliedDate: '2026-03-24',
+      receipt: '741234',
+      paymentCents: usd(15286.48),
+      capitalCents: 0,
+      balanceAfterCents: usd(15286.48),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-02',
+      appliedDate: '2026-03-24',
+      receipt: 'abono-extra',
+      paymentCents: usd(233.1),
+      capitalCents: usd(233.1),
+      balanceAfterCents: usd(15053.38),
+      movementType: 'extra_capital',
+    },
+    {
+      id: 'mov-sa-03',
+      appliedDate: '2026-04-10',
+      receipt: 'adelanto-cuota',
+      paymentCents: usd(170.04),
+      capitalCents: usd(44.68),
+      balanceAfterCents: usd(15008.7),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-04',
+      appliedDate: '2026-05-23',
+      receipt: 'abono-menor',
+      paymentCents: usd(2.32),
+      capitalCents: usd(2.32),
+      balanceAfterCents: usd(15006.38),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-05',
+      appliedDate: '2026-05-27',
+      receipt: 'abono-completo',
+      paymentCents: usd(167.53),
+      capitalCents: usd(44.68),
+      balanceAfterCents: usd(14961.7),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-06',
+      appliedDate: '2026-06-23',
+      receipt: 'abono-menor',
+      paymentCents: usd(1.82),
+      capitalCents: usd(1.82),
+      balanceAfterCents: usd(14959.88),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-07',
+      appliedDate: '2026-06-26',
+      receipt: 'abono-completo',
+      paymentCents: usd(168.02),
+      capitalCents: usd(44.68),
+      balanceAfterCents: usd(14915.2),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-08',
+      appliedDate: '2026-07-31',
+      receipt: 'abono-completo',
+      paymentCents: usd(169.75),
+      capitalCents: usd(44.68),
+      balanceAfterCents: usd(14870.52),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-09',
+      appliedDate: '2026-08-31',
+      receipt: 'abono-menor',
+      paymentCents: usd(0.62),
+      capitalCents: usd(0.62),
+      balanceAfterCents: usd(14869.9),
+      movementType: 'cuota',
+    },
+    {
+      id: 'mov-sa-10',
+      appliedDate: '2026-09-01',
+      receipt: 'abono-completo',
+      paymentCents: usd(169.1),
+      capitalCents: usd(44.68),
+      balanceAfterCents: usd(14870.59),
+      movementType: 'cuota',
+    },
+  ]
+
+  const bolsa = {
+    id: SAN_ANDRES_BOLSA_ID,
+    name: 'Casa San Andrés (Banpro)',
+    creditor: 'Banpro — Grupo Promerica',
+    product: 'Hipotecario / Vivienda USD',
+    vehicle: null,
+    plate: null,
+    accountNumber: '741234',
+    currency: 'USD',
+    openingAmountCents: usd(15286.48),
+    capitalBalanceCents: usd(14870.59),
+    totalCurrentCents: usd(14870.59),
+    accruedInsuranceCents: null,
+    interestRate: null,
+    moraRate: null,
+    paymentDay: 30,
+    installmentCents: usd(169.7),
+    totalInstallments: 175,
+    paidInstallments: 6,
+    pendingInstallments: 175,
+    budgetExpenseId: SAN_ANDRES_BUDGET_EXPENSE_ID,
+    cutDate: '2026-09-26',
+  }
+
+  return { bolsa, movements }
+}
+
+/** @returns {{ bolsa: object, movements: object[] }[]} */
+export function allStandardBolsaSeeds() {
+  return [
+    createTiggoBolsaSeed(),
+    createHimlaBolsaSeed(),
+    createTcMelissaBolsaSeed(),
+    createSanAndresBolsaSeed(),
+  ]
 }

@@ -1,9 +1,49 @@
 import { escapeHtml, formatMoney, formatMonthLabel } from './format.js'
 import { isPaidLine, paymentStatusLabel } from './payment-status.js'
 import { bolsaProjectionFacts } from '../server/bolsa-projection.js'
-import { bolsaAllowsBudgetExpense, budgetLinksForBolsa } from './bolsa-budget-link.js'
+import {
+  TIGGO_BOLSA_ID,
+  bolsaAllowsBudgetExpense,
+  budgetLinksForBolsa,
+} from './bolsa-budget-link.js'
 
-export const TIGGO_BOLSA_ID = 'bolsa-tiggo-4-crediq'
+export { TIGGO_BOLSA_ID }
+
+function bolsaCurrency(bolsa) {
+  return bolsa?.currency || 'USD'
+}
+
+function bolsaStatementKind(bolsa) {
+  const creditor = String(bolsa?.creditor || '')
+  if (/crediq/i.test(creditor)) return 'crediq'
+  if (/ficohsa/i.test(creditor)) return 'ficohsa'
+  if (/banpro|promerica/i.test(creditor)) return 'banpro'
+  return 'generic'
+}
+
+function capitalGoalCopy(bolsa) {
+  const currency = bolsaCurrency(bolsa)
+  const cut = bolsa.cutDate ? `, corte ${formatAppliedDate(bolsa.cutDate)}` : ''
+  const kind = bolsaStatementKind(bolsa)
+  if (kind === 'crediq') {
+    return `Meta: llevar a ${formatMoney(0, currency)} (saldo cancelación CrediQ${cut}).`
+  }
+  if (kind === 'ficohsa') {
+    return `Meta: llevar a ${formatMoney(0, currency)} (saldo al corte Ficohsa${cut}).`
+  }
+  if (kind === 'banpro') {
+    return `Meta: llevar a ${formatMoney(0, currency)} (saldo principal Banpro${cut}).`
+  }
+  return `Meta: llevar el capital a ${formatMoney(0, currency)}${cut}.`
+}
+
+function totalCurrentLabel(bolsa) {
+  const kind = bolsaStatementKind(bolsa)
+  if (kind === 'crediq') return 'Total al día CrediQ'
+  if (kind === 'ficohsa') return 'Saldo al corte'
+  if (kind === 'banpro') return 'Saldo principal'
+  return 'Total al día'
+}
 
 function formatPct(rate) {
   if (rate == null || !Number.isFinite(Number(rate))) return '—'
@@ -81,6 +121,7 @@ export function listBolsaBudgetPaymentLines(state, bolsa, _options = {}) {
 }
 
 function projectionListHtml(bolsa) {
+  const currency = bolsaCurrency(bolsa)
   const facts = bolsaProjectionFacts(bolsa)
   const pending = Number(bolsa.pendingInstallments) || 0
   const installment = Number(bolsa.installmentCents) || 0
@@ -100,12 +141,12 @@ function projectionListHtml(bolsa) {
 
   if (pending && installment && facts?.flowTotalCents != null) {
     items.push(
-      `<li><strong>Flujo total estimado:</strong> ${pending} × ${formatMoney(installment, 'USD')} ≈ ${formatMoney(facts.flowTotalCents, 'USD')} <span class="bolsa-projection-note">(interés y seguros incluidos; no es solo capital)</span></li>`,
+      `<li><strong>Flujo total estimado:</strong> ${pending} × ${formatMoney(installment, currency)} ≈ ${formatMoney(facts.flowTotalCents, currency)} <span class="bolsa-projection-note">(interés y seguros incluidos; no es solo capital)</span></li>`,
     )
   }
 
   items.push(
-    `<li><strong>Capital pendiente:</strong> ${formatMoney(bolsa.capitalBalanceCents, 'USD')} al corte${bolsa.cutDate ? ` (${formatAppliedDate(bolsa.cutDate)})` : ''}.</li>`,
+    `<li><strong>Capital pendiente:</strong> ${formatMoney(bolsa.capitalBalanceCents, currency)} al corte${bolsa.cutDate ? ` (${formatAppliedDate(bolsa.cutDate)})` : ''}.</li>`,
   )
 
   if (!items.length) {
@@ -132,6 +173,7 @@ export function bolsaCapitalChartSeries(movements) {
 }
 
 export function bolsaChartHtml(bolsa) {
+  const currency = bolsaCurrency(bolsa)
   const series = bolsaCapitalChartSeries(bolsa?.movements)
   if (!series.length) {
     return ''
@@ -142,8 +184,8 @@ export function bolsaChartHtml(bolsa) {
     .map((entry) => {
       const height = Math.max(4, Math.round((entry.balanceCents / maxBalance) * maxBarPx))
       return `
-        <div class="chart-col" title="${escapeHtml(formatMoney(entry.balanceCents, 'USD'))}">
-          <span class="chart-bar-label">${escapeHtml(formatMoney(entry.balanceCents, 'USD'))}</span>
+        <div class="chart-col" title="${escapeHtml(formatMoney(entry.balanceCents, currency))}">
+          <span class="chart-bar-label">${escapeHtml(formatMoney(entry.balanceCents, currency))}</span>
           <span class="chart-bar is-net-pos" style="height:${height}px"></span>
           <span class="chart-axis-label">${escapeHtml(entry.label)}</span>
         </div>`
@@ -165,8 +207,66 @@ export function bolsaChartHtml(bolsa) {
   `
 }
 
+/** @returns {{ id: string, name: string }[]} */
+export function listPresupuestoExpenseLinkOptions(state) {
+  if (!state?.months) return []
+  const monthKeys = Object.keys(state.months)
+    .filter((key) => /^\d{4}-\d{2}$/.test(key))
+    .sort()
+  const byId = new Map()
+  for (const monthKey of monthKeys) {
+    const expenses = state.months[monthKey]?.expenses
+    if (!Array.isArray(expenses)) continue
+    for (const expense of expenses) {
+      if (!expense?.id) continue
+      byId.set(expense.id, { id: expense.id, name: String(expense.name || expense.id).trim() || expense.id })
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+}
+
+export function bolsaBudgetLinkHtml(bolsa, state, { canEdit = false } = {}) {
+  if (!canEdit) {
+    return bolsa?.budgetExpenseId
+      ? `<p class="bolsa-link">Enlazado al presupuesto: <code>${escapeHtml(bolsa.budgetExpenseId)}</code></p>`
+      : ''
+  }
+  const options = listPresupuestoExpenseLinkOptions(state)
+  if (!options.length) {
+    return `<section class="bolsa-link-setup" aria-labelledby="bolsa-link-title">
+      <h3 class="bolsa-table-title" id="bolsa-link-title">Enlace al presupuesto</h3>
+      <p class="bolsa-empty">No hay gastos en los meses cargados. Crea líneas en Presupuesto y vuelve aquí para enlazar.</p>
+    </section>`
+  }
+  const selected = bolsa?.budgetExpenseId || ''
+  const optionHtml = options
+    .map(
+      (row) =>
+        `<option value="${escapeHtml(row.id)}"${row.id === selected ? ' selected' : ''}>${escapeHtml(row.name)} · <code>${escapeHtml(row.id)}</code></option>`,
+    )
+    .join('')
+  return `
+    <section class="bolsa-link-setup" aria-labelledby="bolsa-link-title">
+      <h3 class="bolsa-table-title" id="bolsa-link-title">Enlace al presupuesto</h3>
+      <p class="bolsa-projection-note">Elige qué <strong>id de gasto</strong> del presupuesto corresponde a esta bolsa. Los pagos manuales buscan esa línea en cada mes (en Tiggo 4, las líneas llamadas Himla en el id viejo no se mezclan).</p>
+      <form class="bolsa-link-form" data-action="bolsa-set-budget-link">
+        <label class="field">
+          <span>Línea enlazada</span>
+          <select name="budgetExpenseId" required>${optionHtml}</select>
+        </label>
+        <button type="submit" class="btn btn-secondary">Guardar enlace</button>
+      </form>
+    </section>`
+}
+
 export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
-  if (!canEdit || !bolsa?.budgetExpenseId) return ''
+  if (!canEdit) return ''
+  if (!bolsa?.budgetExpenseId) {
+    return `<section class="bolsa-apply" aria-labelledby="bolsa-apply-title">
+      <h3 class="bolsa-table-title" id="bolsa-apply-title">Aplicar pago manual</h3>
+      <p class="bolsa-empty">Guarda un enlace al presupuesto arriba para ver las cuotas disponibles.</p>
+    </section>`
+  }
   const lines = listBolsaBudgetPaymentLines(state, bolsa)
   const monthKeys = state?.months
     ? Object.keys(state.months)
@@ -193,7 +293,7 @@ export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
   return `
     <section class="bolsa-apply" aria-labelledby="bolsa-apply-title">
       <h3 class="bolsa-table-title" id="bolsa-apply-title">Aplicar pago manual</h3>
-      <p class="bolsa-projection-note">Solo cuotas del <strong>${escapeHtml(budgetLineLabelForBolsa(bolsa))}</strong> (ids ${escapeHtml(budgetLinksForBolsa(bolsa).map((l) => l.expenseId).join(', '))}). <strong>Himla</strong> y <strong>Tiggo 4</strong> son préstamos distintos: no mezclar en la misma línea del presupuesto.</p>
+      <p class="bolsa-projection-note">Cuotas enlazadas (ids ${escapeHtml([...new Set(budgetLinksForBolsa(bolsa).map((l) => l.expenseId))].join(', '))}). Nombre real del presupuesto en cada mes.</p>
       <form class="bolsa-apply-form" data-action="bolsa-apply-payment">
         <label class="field">
           <span>Línea de pago (mes del presupuesto)</span>
@@ -213,11 +313,24 @@ export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
   `
 }
 
+export function bolsaPickerTabsHtml(bolsas, selectedId) {
+  const list = Array.isArray(bolsas) ? bolsas : []
+  if (list.length <= 1) return ''
+  const tabs = list
+    .map((item) => {
+      const current = item.id === selectedId
+      return `<button type="button" class="bolsa-tab${current ? ' is-current' : ''}" data-action="bolsa-select" data-bolsa-id="${escapeHtml(item.id)}"${current ? ' aria-current="true"' : ''}>${escapeHtml(item.name || item.id)}</button>`
+    })
+    .join('')
+  return `<nav class="bolsa-tabs" aria-label="Elegir bolsa">${tabs}</nav>`
+}
+
 export function bolsaSummaryHtml(bolsa) {
   if (!bolsa) {
     return '<p class="bolsa-empty">No hay bolsas de deuda todavía.</p>'
   }
 
+  const currency = bolsaCurrency(bolsa)
   const meta = [
     bolsa.creditor,
     bolsa.product,
@@ -238,18 +351,22 @@ export function bolsaSummaryHtml(bolsa) {
     <div class="insight-grid bolsa-metrics">
       <article class="insight-card tone-ok">
         <p class="eyebrow">Capital pendiente</p>
-        <p class="bolsa-metric-value">${formatMoney(bolsa.capitalBalanceCents, 'USD')}</p>
-        <p>Meta: llevar a $0 (saldo cancelación CrediQ${bolsa.cutDate ? `, corte ${formatAppliedDate(bolsa.cutDate)}` : ''}).</p>
+        <p class="bolsa-metric-value">${formatMoney(bolsa.capitalBalanceCents, currency)}</p>
+        <p>${escapeHtml(capitalGoalCopy(bolsa))}</p>
       </article>
       <article class="insight-card">
-        <p class="eyebrow">Total al día CrediQ</p>
-        <p class="bolsa-metric-value">${formatMoney(bolsa.totalCurrentCents ?? bolsa.capitalBalanceCents, 'USD')}</p>
-        <p>Incluye seguros por devengar${bolsa.accruedInsuranceCents ? ` (${formatMoney(bolsa.accruedInsuranceCents, 'USD')})` : ''}.</p>
+        <p class="eyebrow">${escapeHtml(totalCurrentLabel(bolsa))}</p>
+        <p class="bolsa-metric-value">${formatMoney(bolsa.totalCurrentCents ?? bolsa.capitalBalanceCents, currency)}</p>
+        <p>${
+          bolsa.accruedInsuranceCents
+            ? `Incluye seguros por devengar (${formatMoney(bolsa.accruedInsuranceCents, currency)}).`
+            : 'Saldo de referencia al corte del acreedor.'
+        }</p>
       </article>
       <article class="insight-card">
         <p class="eyebrow">Cuota referencia</p>
-        <p class="bolsa-metric-value">${formatMoney(bolsa.installmentCents, 'USD')}</p>
-        <p>Día ${bolsa.paymentDay ?? '—'} · Tasa ${formatPct(bolsa.interestRate)} anual</p>
+        <p class="bolsa-metric-value">${formatMoney(bolsa.installmentCents, currency)}</p>
+        <p>Día ${bolsa.paymentDay ?? '—'}${bolsa.interestRate != null ? ` · Tasa ${formatPct(bolsa.interestRate)} anual` : ''}</p>
       </article>
     </div>
     <div class="bolsa-projection">${projectionListHtml(bolsa)}</div>
@@ -265,6 +382,7 @@ export function bolsaSummaryHtml(bolsa) {
 }
 
 export function bolsaMovementsHtml(bolsa) {
+  const currency = bolsaCurrency(bolsa)
   const movements = Array.isArray(bolsa?.movements) ? bolsa.movements : []
   if (!movements.length) {
     return '<p class="bolsa-empty">Sin movimientos registrados.</p>'
@@ -276,9 +394,9 @@ export function bolsaMovementsHtml(bolsa) {
     <tr>
       <td>${formatAppliedDate(mov.appliedDate)}</td>
       <td>${escapeHtml(mov.receipt || '—')}</td>
-      <td class="num">${formatMoney(mov.paymentCents, 'USD')}</td>
-      <td class="num">${formatMoney(mov.capitalCents, 'USD')}</td>
-      <td class="num">${mov.balanceAfterCents == null ? '—' : formatMoney(mov.balanceAfterCents, 'USD')}</td>
+      <td class="num">${formatMoney(mov.paymentCents, currency)}</td>
+      <td class="num">${formatMoney(mov.capitalCents, currency)}</td>
+      <td class="num">${mov.balanceAfterCents == null ? '—' : formatMoney(mov.balanceAfterCents, currency)}</td>
       <td>${escapeHtml(movementTypeLabel(mov.movementType))}</td>
       <td class="bolsa-row-actions">${
         mov.deletable
@@ -311,7 +429,8 @@ export function bolsaMovementsHtml(bolsa) {
 }
 
 export function bolsaPanelHtml(bolsa, state, options = {}) {
-  return `${bolsaSummaryHtml(bolsa)}${bolsaChartHtml(bolsa)}${bolsaApplyPaymentHtml(bolsa, state, options)}${bolsaMovementsHtml(bolsa)}`
+  const tabs = bolsaPickerTabsHtml(options.bolsas, bolsa?.id)
+  return `${tabs}${bolsaSummaryHtml(bolsa)}${bolsaChartHtml(bolsa)}${bolsaBudgetLinkHtml(bolsa, state, options)}${bolsaApplyPaymentHtml(bolsa, state, options)}${bolsaMovementsHtml(bolsa)}`
 }
 
 export async function fetchBolsaDetail(bolsaId) {
@@ -345,6 +464,18 @@ export async function applyBolsaPaymentRequest(bolsaId, payload) {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `No se pudo aplicar el pago (${res.status})`)
+  return body
+}
+
+export async function updateBolsaBudgetLinkRequest(bolsaId, budgetExpenseId) {
+  const res = await fetch(`/api/bolsas/${encodeURIComponent(bolsaId)}/budget-link`, {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ budgetExpenseId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `No se pudo guardar el enlace (${res.status})`)
   return body
 }
 
