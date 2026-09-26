@@ -1,6 +1,37 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { bolsaChartHtml, bolsaCapitalChartSeries } from './bolsa.js'
+import {
+  bolsaChartHtml,
+  bolsaCapitalChartSeries,
+  budgetLineLabelForBolsa,
+  listBolsaBudgetPaymentLines,
+} from './bolsa.js'
+
+describe('bolsa budget payment lines', () => {
+  it('uses canonical Tiggo label even if expense was renamed Himla', () => {
+    const state = {
+      months: {
+        '2026-10': {
+          expenses: [
+            {
+              id: 'exp-ot-camioneta',
+              name: 'Himla',
+              amount: 62000,
+              currency: 'NIO',
+            },
+          ],
+        },
+      },
+    }
+    const bolsa = { budgetExpenseId: 'exp-ot-camioneta', name: 'Chery Tiggo 4 Pro (CrediQ)' }
+    const lines = listBolsaBudgetPaymentLines(state, bolsa.budgetExpenseId, {
+      budgetLineLabel: budgetLineLabelForBolsa(bolsa),
+    })
+    assert.equal(lines.length, 1)
+    assert.match(lines[0].label, /Cuota Tiggo 4 Pro \(CrediQ\)/)
+    assert.doesNotMatch(lines[0].label, /Himla/)
+  })
+})
 
 describe('bolsa chart helpers', () => {
   it('bolsaCapitalChartSeries sorts by sort order', () => {

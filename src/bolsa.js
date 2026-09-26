@@ -31,9 +31,18 @@ function chargesForExpense(expense) {
   return charges
 }
 
+/** Canonical presupuesto label for a bolsa (ignores stale names like "Himla" on exp-ot-camioneta). */
+export function budgetLineLabelForBolsa(bolsa) {
+  if (!bolsa) return 'Cuota'
+  if (bolsa.budgetExpenseId === 'exp-ot-camioneta') return 'Cuota Tiggo 4 Pro (CrediQ)'
+  if (bolsa.budgetExpenseId === 'exp-ot-himla-cuota') return 'Cuota Himla (CrediQ)'
+  return bolsa.name || 'Cuota'
+}
+
 /** @returns {{ key: string, sourceMonthKey: string, expenseId: string, chargeId: string|null, label: string, amount: number, currency: string, paid: boolean }[]} */
-export function listBolsaBudgetPaymentLines(state, budgetExpenseId) {
+export function listBolsaBudgetPaymentLines(state, budgetExpenseId, options = {}) {
   if (!state?.months || !budgetExpenseId) return []
+  const canonicalName = options.budgetLineLabel || null
   const keys = Object.keys(state.months).filter((key) => /^\d{4}-\d{2}$/.test(key)).sort()
   const lines = []
   for (const monthKey of keys) {
@@ -43,7 +52,10 @@ export function listBolsaBudgetPaymentLines(state, budgetExpenseId) {
     const currency = expense.currency || 'USD'
     const pushLine = (item, chargeId) => {
       const amount = Number(item?.amount) || 0
-      const name = item?.name || expense.name || 'Cuota'
+      const name =
+        !chargeId && canonicalName
+          ? canonicalName
+          : item?.name || expense.name || canonicalName || 'Cuota'
       const paid = isPaidLine(item)
       const status = paymentStatusLabel(item)
       const chargeSuffix = chargeId ? ` · subcargo` : ''
@@ -158,7 +170,9 @@ export function bolsaChartHtml(bolsa) {
 
 export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
   if (!canEdit || !bolsa?.budgetExpenseId) return ''
-  const lines = listBolsaBudgetPaymentLines(state, bolsa.budgetExpenseId)
+  const lines = listBolsaBudgetPaymentLines(state, bolsa.budgetExpenseId, {
+    budgetLineLabel: budgetLineLabelForBolsa(bolsa),
+  })
   const monthKeys = state?.months
     ? Object.keys(state.months)
         .filter((key) => /^\d{4}-\d{2}$/.test(key))
@@ -184,7 +198,7 @@ export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
   return `
     <section class="bolsa-apply" aria-labelledby="bolsa-apply-title">
       <h3 class="bolsa-table-title" id="bolsa-apply-title">Aplicar pago manual</h3>
-      <p class="bolsa-projection-note">Elige la línea del presupuesto y el mes donde debe quedar marcada como pagada. Se registra un movimiento en la bolsa; el capital del movimiento es aproximado (refinable después).</p>
+      <p class="bolsa-projection-note">Solo líneas enlazadas a esta bolsa (<code>${escapeHtml(bolsa.budgetExpenseId)}</code> · ${escapeHtml(budgetLineLabelForBolsa(bolsa))}). Elige el mes del presupuesto y dónde marcar pagado. Si en Presupuesto la línea aún dice otro nombre (ej. Himla), edítala ahí: Tiggo 4 = <strong>Cuota Tiggo 4 Pro</strong>, Himla = <strong>Cuota Himla</strong> (gasto aparte).</p>
       <form class="bolsa-apply-form" data-action="bolsa-apply-payment">
         <label class="field">
           <span>Línea de pago (mes del presupuesto)</span>

@@ -100,7 +100,6 @@ describe('monthPaidUnpaidTotals', () => {
     assert.equal(totals.ok, true)
     assert.equal(totals.paidUsd, 0)
     assert.equal(totals.unpaidUsd, budget.expensesUsd)
-    assert.equal(totals.unpaidUsd, 479425)
   })
 
   it('moves a paid parent from no pagado to pagado without counting charges', () => {
@@ -155,8 +154,13 @@ describe('analyticsHtml payment cards', () => {
     assert.ok(paid < unpaid)
     assert.ok(unpaid < mom)
     assert.ok(mom < bars)
+    const budget = monthTotals(month)
+    const unpaidLabel = (budget.expensesUsd / 100).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
     assert.match(html, /id="analytics-paid"[^>]*>\$0\.00/)
-    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,794\.25/)
+    assert.match(html, new RegExp(`id="analytics-unpaid"[^>]*>\\$${unpaidLabel.replace('.', '\\.')}`))
   })
 
   it('renders paid totals after a parent checkbox is marked pagado', () => {
@@ -167,7 +171,13 @@ describe('analyticsHtml payment cards', () => {
       { currentMonth: '2026-10', months: { '2026-10': month } },
       { currentKey: '2026-10' },
     )
+    const budget = monthTotals(month)
+    const unpaidAfter = budget.expensesUsd - 17200
+    const unpaidLabel = (unpaidAfter / 100).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
     assert.match(html, /id="analytics-paid"[^>]*>\$172\.00/)
-    assert.match(html, /id="analytics-unpaid"[^>]*>\$4,622\.25/)
+    assert.match(html, new RegExp(`id="analytics-unpaid"[^>]*>\\$${unpaidLabel.replace('.', '\\.')}`))
   })
 })

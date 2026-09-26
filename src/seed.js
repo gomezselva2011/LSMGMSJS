@@ -72,6 +72,15 @@ export function createOctoberSeed() {
         currency: 'USD',
       },
       {
+        id: 'exp-ot-himla-cuota',
+        name: 'Cuota Himla (CrediQ)',
+        amount: 47502,
+        categoryId: CATEGORY_OTROS,
+        dueDay: 20,
+        rubro: 'camionetas',
+        currency: 'USD',
+      },
+      {
         id: 'exp-ot-internet-lenin',
         name: 'Internet Lenin',
         amount: 6000,
