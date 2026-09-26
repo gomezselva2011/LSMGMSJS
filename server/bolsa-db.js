@@ -207,6 +207,10 @@ export async function ensureBolsaReady(db) {
   await seedBolsaIfEmpty(db)
   await ensureMissingStandardBolsas(db)
   await migrateBolsaBudgetLinks(db)
+  const bolsaIds = await allRows(db, 'SELECT id FROM bolsas')
+  for (const row of bolsaIds) {
+    await recomputeBolsaSnapshot(db, row.id)
+  }
 }
 
 export async function updateBolsaBudgetLink(db, bolsaId, budgetExpenseId) {
@@ -323,13 +327,35 @@ function countManualApplicationRows(movementRows) {
   return count
 }
 
+/** Capital after the last seeded (PDF) movement — not the bolsa cut snapshot if they differ. */
+function anchorCapitalBeforeManuals(movementRows, bolsaRow) {
+  let anchor = null
+  for (const row of movementRows) {
+    if (movementRowIsDeletable(row)) break
+    if (row.balance_after_cents != null) anchor = Number(row.balance_after_cents)
+  }
+  if (anchor != null && Number.isFinite(anchor)) return anchor
+  return Number(bolsaRow?.capital_balance_cents) || 0
+}
+
+/** Running capital after all movements in DB order (seed + manual). */
+export function capitalBalanceAfterMovements(movementRows, bolsaRow) {
+  let running = anchorCapitalBeforeManuals(movementRows, bolsaRow)
+  for (const row of movementRows) {
+    if (!movementRowIsDeletable(row)) continue
+    running = Math.max(0, running - (Number(row.capital_cents) || 0))
+  }
+  return running
+}
+
 /**
  * Sync paid/pending and manual movement balance_after chain; seeded PDF rows are left unchanged.
  * @param {import('./sql-conn.js').GastosDb} db
  * @param {string} bolsaId
- * @param {{ capitalBalanceCents?: number }} [options]
+ * @param {{ capitalBalanceCents?: number }} [options] — ignored; chain is recomputed from seed anchor
  */
 export async function recomputeBolsaSnapshot(db, bolsaId, options = {}) {
+  void options
   const bolsaRow = await getRow(db, 'SELECT * FROM bolsas WHERE id = ?', bolsaId)
   if (!bolsaRow) return null
 
@@ -347,20 +373,12 @@ export async function recomputeBolsaSnapshot(db, bolsaId, options = {}) {
   const paidInstallments = Math.min(totalInstallments, seedPaid + manualCount)
   const pendingInstallments = Math.max(0, totalInstallments - paidInstallments)
 
-  let capitalBalanceCents = options.capitalBalanceCents
-  if (capitalBalanceCents == null) capitalBalanceCents = Number(bolsaRow.capital_balance_cents) || 0
-
-  if (manualRows.length) {
-    let balanceBefore = capitalBalanceCents
-    for (const row of manualRows) {
-      balanceBefore += Number(row.capital_cents) || 0
-    }
-    for (const row of manualRows) {
-      const capitalPart = Number(row.capital_cents) || 0
-      balanceBefore = Math.max(0, balanceBefore - capitalPart)
-      await runSql(db, 'UPDATE bolsa_movements SET balance_after_cents = ? WHERE id = ?', balanceBefore, row.id)
-    }
+  let running = anchorCapitalBeforeManuals(movementRows, bolsaRow)
+  for (const row of manualRows) {
+    running = Math.max(0, running - (Number(row.capital_cents) || 0))
+    await runSql(db, 'UPDATE bolsa_movements SET balance_after_cents = ? WHERE id = ?', running, row.id)
   }
+  const capitalBalanceCents = running
 
   const accrued = bolsaRow.accrued_insurance_cents == null ? null : Number(bolsaRow.accrued_insurance_cents)
   const totalCurrentCents = accrued == null ? bolsaRow.total_current_cents : capitalBalanceCents + accrued
@@ -519,7 +537,12 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
   )
   const sortOrder = Number(sortRow?.max_order ?? -1) + 1
   const movementId = newMovementId()
-  const currentCapital = Number(bolsaRow.capital_balance_cents) || 0
+  const existingRows = await allRows(
+    db,
+    'SELECT * FROM bolsa_movements WHERE bolsa_id = ? ORDER BY sort_order, applied_date, id',
+    bolsaId,
+  )
+  const currentCapital = capitalBalanceAfterMovements(existingRows, bolsaRow)
   const capitalCents = computeCapitalCentsForPayment(bolsa, paymentCents, currentCapital)
   const balanceAfterCents = Math.max(0, currentCapital - capitalCents)
   const extraJson = JSON.stringify({
@@ -548,7 +571,8 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
     extraJson,
   )
 
-  await recomputeBolsaSnapshot(db, bolsaId, { capitalBalanceCents: balanceAfterCents })
+  void balanceAfterCents
+  await recomputeBolsaSnapshot(db, bolsaId)
   return readBolsa(db, bolsaId)
 }
 
@@ -586,10 +610,7 @@ export async function deleteBolsaMovement(db, bolsaId, movementId) {
     }
   }
 
-  const restoredCapital =
-    (Number(bolsaRow.capital_balance_cents) || 0) + (Number(movRow.capital_cents) || 0)
-
   await runSql(db, 'DELETE FROM bolsa_movements WHERE id = ? AND bolsa_id = ?', movementId, bolsaId)
-  await recomputeBolsaSnapshot(db, bolsaId, { capitalBalanceCents: restoredCapital })
+  await recomputeBolsaSnapshot(db, bolsaId)
   return readBolsa(db, bolsaId)
 }

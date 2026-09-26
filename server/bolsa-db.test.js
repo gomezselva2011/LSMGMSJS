@@ -43,13 +43,13 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(tiggo.name, 'Chery Tiggo 4 Pro (CrediQ)')
     assert.equal(tiggo.accountNumber, '0660000001280')
     assert.equal(tiggo.plate, 'M 419693')
-    assert.equal(tiggo.capitalBalanceCents, 2007833)
+    assert.equal(tiggo.capitalBalanceCents, 1988182)
     assert.equal(tiggo.movements.length, 25)
     assert.equal(tiggo.budgetExpenseId, TIGGO_BUDGET_EXPENSE_ID)
 
     const himla = await readBolsa(db, 'bolsa-himla-crediq')
     assert.equal(himla.accountNumber, '0660000001693')
-    assert.equal(himla.capitalBalanceCents, 2274004)
+    assert.equal(himla.capitalBalanceCents, 2248383)
     assert.equal(himla.movements.length, 10)
     assert.equal(himla.budgetExpenseId, 'exp-ot-himla-cuota')
 
@@ -90,6 +90,8 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
       },
     })
     const before = await readBolsa(db, bolsaId)
+    const lastSeedBalance = before.movements.filter((m) => !m.deletable).at(-1)?.balanceAfterCents
+    assert.ok(lastSeedBalance != null)
     await applyBolsaPayment(db, bolsaId, {
       sourceMonthKey: '2026-10',
       expenseId: TIGGO_BUDGET_EXPENSE_ID,
@@ -100,7 +102,7 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'paid')
     const after = await readBolsa(db, bolsaId)
     assert.equal(after.movements.length, before.movements.length + 1)
-    assert.ok(after.capitalBalanceCents < before.capitalBalanceCents)
+    assert.ok(after.capitalBalanceCents < lastSeedBalance)
     assert.equal(after.pendingInstallments, before.pendingInstallments - 1)
     assert.equal(after.paidInstallments, before.paidInstallments + 1)
     const last = after.movements[after.movements.length - 1]
@@ -145,6 +147,52 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(after.pendingInstallments, before.pendingInstallments)
     const state = await readHouseholdState(db)
     assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'unpaid')
+  })
+
+  it('two manual payments lower capital from last PDF balance without inflating mid rows', async () => {
+    const root = await tmpRoot()
+    const db = await ensureGastosDb({ root })
+    const bolsaId = 'bolsa-tiggo-4-crediq'
+    await writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      saveScope: 'all',
+      months: {
+        '2026-10': {
+          expenses: [{ id: TIGGO_BUDGET_EXPENSE_ID, name: 'Chery Tiggo 4pro', amount: 45000, paymentStatus: 'unpaid' }],
+        },
+        '2026-11': {
+          expenses: [{ id: TIGGO_BUDGET_EXPENSE_ID, name: 'Chery Tiggo 4pro', amount: 45000, paymentStatus: 'unpaid' }],
+        },
+        '2026-12': {
+          expenses: [{ id: TIGGO_BUDGET_EXPENSE_ID, name: 'Chery Tiggo 4pro', amount: 45000, paymentStatus: 'unpaid' }],
+        },
+      },
+    })
+    const before = await readBolsa(db, bolsaId)
+    const anchor = before.movements.filter((m) => !m.deletable).at(-1)?.balanceAfterCents
+    await applyBolsaPayment(db, bolsaId, {
+      sourceMonthKey: '2026-10',
+      expenseId: TIGGO_BUDGET_EXPENSE_ID,
+      applyToMonthKey: '2026-10',
+      appliedDate: '2026-10-05',
+    })
+    const mid = await readBolsa(db, bolsaId)
+    const manual1 = mid.movements.filter((m) => m.deletable)
+    assert.equal(manual1.length, 1)
+    assert.ok(manual1[0].balanceAfterCents < anchor)
+    await applyBolsaPayment(db, bolsaId, {
+      sourceMonthKey: '2026-11',
+      expenseId: TIGGO_BUDGET_EXPENSE_ID,
+      applyToMonthKey: '2026-11',
+      appliedDate: '2026-11-05',
+    })
+    const after = await readBolsa(db, bolsaId)
+    const manuals = after.movements.filter((m) => m.deletable)
+    assert.equal(manuals.length, 2)
+    assert.ok(manuals[0].balanceAfterCents < anchor)
+    assert.ok(manuals[1].balanceAfterCents < manuals[0].balanceAfterCents)
+    assert.equal(manuals[1].balanceAfterCents, after.capitalBalanceCents)
   })
 
   it('applyBolsaPayment rejects Himla line for Tiggo bolsa', async () => {
