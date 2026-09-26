@@ -3150,6 +3150,26 @@ body.is-readonly .admin-only {
   margin-top: var(--space-3);
 }
 
+.bolsa-capital-chart {
+  margin: 1.25rem 0;
+}
+
+.bolsa-capital-chart .chart-plot {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  padding-bottom: 0.25rem;
+}
+
+.bolsa-capital-chart .chart-col {
+  min-width: 3.25rem;
+  flex: 0 0 auto;
+}
+
+.bolsa-row-actions {
+  white-space: nowrap;
+}
+
 .bolsa-projection {
   max-width: 46rem;
   color: var(--muted);

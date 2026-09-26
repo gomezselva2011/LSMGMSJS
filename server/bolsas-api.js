@@ -1,5 +1,5 @@
 import { ensureGastosDb, resolveDbPath } from './db.js'
-import { applyBolsaPayment, ensureBolsaReady, listBolsas, readBolsa } from './bolsa-db.js'
+import { applyBolsaPayment, deleteBolsaMovement, ensureBolsaReady, listBolsas, readBolsa } from './bolsa-db.js'
 import { ROLE_ADMIN } from './household-users.js'
 
 export const BOLSAS_API_PREFIX = '/api/bolsas'
@@ -14,6 +14,13 @@ export function parseBolsasApiUrl(url = '') {
   if (parts.length === 1) return { list: false, id: decodeURIComponent(parts[0]) }
   if (parts.length === 2 && parts[1] === 'apply-payment') {
     return { applyPayment: true, id: decodeURIComponent(parts[0]) }
+  }
+  if (parts.length === 3 && parts[1] === 'movements') {
+    return {
+      deleteMovement: true,
+      id: decodeURIComponent(parts[0]),
+      movementId: decodeURIComponent(parts[2]),
+    }
   }
   return null
 }
@@ -71,9 +78,38 @@ export async function handleBolsasApi(req, res, next, options = {}) {
       return true
     }
 
-    const mutating = req.method === 'POST'
+    const mutating = req.method === 'POST' || req.method === 'DELETE'
     if (mutating && user.role !== ROLE_ADMIN) {
-      sendJson(res, 403, { error: 'Solo un admin puede aplicar pagos a la bolsa.' })
+      sendJson(res, 403, { error: 'Solo un admin puede modificar la bolsa.' })
+      return true
+    }
+
+    if (match.deleteMovement) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Allow', 'DELETE, OPTIONS')
+        res.end()
+        return true
+      }
+      if (req.method !== 'DELETE') {
+        res.statusCode = 405
+        res.setHeader('Allow', 'DELETE, OPTIONS')
+        res.end()
+        return true
+      }
+
+      const db = await ensureGastosDb(dbOptions)
+      await ensureBolsaReady(db)
+
+      try {
+        const bolsa = await deleteBolsaMovement(db, match.id, match.movementId)
+        sendJson(res, 200, bolsa)
+      } catch (error) {
+        const status =
+          error.status ||
+          (error.code === 'NOT_FOUND' ? 404 : error.code === 'NOT_DELETABLE' ? 403 : 400)
+        sendJson(res, status, { error: error.message || 'No se pudo quitar el pago.' })
+      }
       return true
     }
 

@@ -50,6 +50,7 @@ import { analyticsHtml, MODE_CLASSIFICATION, MODE_RUBRO, MODE_TOTALS, parseAnaly
 import {
   applyBolsaPaymentRequest,
   bolsaPanelHtml,
+  deleteBolsaMovementRequest,
   fetchBolsaDetail,
   fetchBolsaList,
   TIGGO_BOLSA_ID,
@@ -2374,7 +2375,29 @@ function onAppClick(event) {
     createPrevMonth()
   } else if (action === 'open-overdue') {
     openOverdueLine(id)
+  } else if (action === 'bolsa-delete-movement') {
+    confirmRemoveBolsaMovement(button.dataset.movementId)
   }
+}
+
+function confirmRemoveBolsaMovement(movementId) {
+  if (!canEdit() || !bolsaDetail?.id || !movementId) return
+  openConfirm({
+    title: 'Quitar pago',
+    message:
+      'Se eliminará el movimiento y se desvinculará del presupuesto (la línea quedará como no pagada).',
+    confirmLabel: 'Quitar pago',
+    onConfirm: () => {
+      deleteBolsaMovementRequest(bolsaDetail.id, movementId)
+        .then(async (bolsa) => {
+          bolsaDetail = bolsa
+          await loadBudgetFromServer()
+          showToast('Pago quitado y desvinculado del presupuesto.')
+          renderBolsas()
+        })
+        .catch((error) => showToast(error?.message || 'No se pudo quitar el pago.'))
+    },
+  })
 }
 
 async function submitBolsaApplyPayment(form) {

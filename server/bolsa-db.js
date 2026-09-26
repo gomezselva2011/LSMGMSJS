@@ -74,6 +74,8 @@ function bolsaFromRow(row) {
 }
 
 function movementFromRow(row) {
+  const extra = parseExtraJson(row.extra_json)
+  const budgetLink = movementLinkFromExtra(extra)
   return {
     id: row.id,
     bolsaId: row.bolsa_id,
@@ -84,6 +86,8 @@ function movementFromRow(row) {
     balanceAfterCents: row.balance_after_cents == null ? null : Number(row.balance_after_cents),
     movementType: row.movement_type || 'cuota',
     sortOrder: Number(row.sort_order) || 0,
+    budgetLink,
+    deletable: Boolean(budgetLink),
   }
 }
 
@@ -237,6 +241,108 @@ function markLinePaid(item) {
   return true
 }
 
+function markLineUnpaid(item) {
+  if (!item || typeof item !== 'object') return false
+  item.paymentStatus = 'unpaid'
+  item.paid = false
+  if (typeof item.pagado === 'boolean') item.pagado = false
+  return true
+}
+
+function computeCapitalCentsForPayment(bolsa, paymentCents, currentCapitalCents) {
+  const cap = Math.max(0, Number(currentCapitalCents) || 0)
+  const payment = Math.max(0, Number(paymentCents) || 0)
+  if (!payment) return 0
+  const rate = Number(bolsa?.interestRate)
+  if (Number.isFinite(rate) && rate > 0 && cap > 0) {
+    const interestCents = Math.min(payment, Math.round(cap * (rate / 100 / 12)))
+    const capitalFromPayment = Math.max(0, payment - interestCents)
+    return Math.min(cap, capitalFromPayment)
+  }
+  return Math.min(payment, cap)
+}
+
+function seedPaidInstallmentsBaseline(bolsaId, bolsaRow) {
+  const { bolsa: seedBolsa } = createTiggoBolsaSeed()
+  if (bolsaId === seedBolsa.id) return Number(seedBolsa.paidInstallments) || 0
+  const paid = Number(bolsaRow?.paid_installments) || 0
+  const pending = Number(bolsaRow?.pending_installments) || 0
+  const total = Number(bolsaRow?.total_installments) || paid + pending
+  return Math.max(0, Math.min(paid, total))
+}
+
+function countManualApplicationRows(movementRows) {
+  let count = 0
+  for (const row of movementRows) {
+    if (movementLinkFromExtra(parseExtraJson(row.extra_json))) count += 1
+  }
+  return count
+}
+
+/**
+ * Sync paid/pending and manual movement balance_after chain; seeded PDF rows are left unchanged.
+ * @param {import('./sql-conn.js').GastosDb} db
+ * @param {string} bolsaId
+ * @param {{ capitalBalanceCents?: number }} [options]
+ */
+export async function recomputeBolsaSnapshot(db, bolsaId, options = {}) {
+  const bolsaRow = await getRow(db, 'SELECT * FROM bolsas WHERE id = ?', bolsaId)
+  if (!bolsaRow) return null
+
+  const movementRows = await allRows(
+    db,
+    'SELECT * FROM bolsa_movements WHERE bolsa_id = ? ORDER BY sort_order, applied_date, id',
+    bolsaId,
+  )
+
+  const manualRows = movementRows.filter((row) => movementRowIsDeletable(row))
+  const manualCount = manualRows.length
+  const seedPaid = seedPaidInstallmentsBaseline(bolsaId, bolsaRow)
+  const totalInstallments =
+    Number(bolsaRow.total_installments) || seedPaid + (Number(bolsaRow.pending_installments) || 0)
+  const paidInstallments = Math.min(totalInstallments, seedPaid + manualCount)
+  const pendingInstallments = Math.max(0, totalInstallments - paidInstallments)
+
+  let capitalBalanceCents = options.capitalBalanceCents
+  if (capitalBalanceCents == null) capitalBalanceCents = Number(bolsaRow.capital_balance_cents) || 0
+
+  if (manualRows.length) {
+    let balanceBefore = capitalBalanceCents
+    for (const row of manualRows) {
+      balanceBefore += Number(row.capital_cents) || 0
+    }
+    for (const row of manualRows) {
+      const capitalPart = Number(row.capital_cents) || 0
+      balanceBefore = Math.max(0, balanceBefore - capitalPart)
+      await runSql(db, 'UPDATE bolsa_movements SET balance_after_cents = ? WHERE id = ?', balanceBefore, row.id)
+    }
+  }
+
+  const accrued = bolsaRow.accrued_insurance_cents == null ? null : Number(bolsaRow.accrued_insurance_cents)
+  const totalCurrentCents = accrued == null ? bolsaRow.total_current_cents : capitalBalanceCents + accrued
+
+  await runSql(
+    db,
+    `UPDATE bolsas SET
+      capital_balance_cents = ?,
+      paid_installments = ?,
+      pending_installments = ?,
+      total_current_cents = ?
+    WHERE id = ?`,
+    capitalBalanceCents,
+    paidInstallments,
+    pendingInstallments,
+    totalCurrentCents,
+    bolsaId,
+  )
+
+  return readBolsa(db, bolsaId)
+}
+
+function movementRowIsDeletable(row) {
+  return Boolean(movementLinkFromExtra(parseExtraJson(row.extra_json)))
+}
+
 function findBudgetLine(month, expenseId, chargeId) {
   if (!month || !Array.isArray(month.expenses)) return { expense: null, line: null, kind: null }
   const expense = month.expenses.find((entry) => entry?.id === expenseId)
@@ -370,12 +476,15 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
   )
   const sortOrder = Number(sortRow?.max_order ?? -1) + 1
   const movementId = newMovementId()
-  const capitalCents = paymentCents
+  const currentCapital = Number(bolsaRow.capital_balance_cents) || 0
+  const capitalCents = computeCapitalCentsForPayment(bolsa, paymentCents, currentCapital)
+  const balanceAfterCents = Math.max(0, currentCapital - capitalCents)
   const extraJson = JSON.stringify({
     budgetMonthKey: applyToMonthKey,
     expenseId,
     ...(chargeId ? { chargeId } : {}),
     sourceMonthKey,
+    source: 'manual',
   })
 
   await runSql(
@@ -390,11 +499,54 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
     receipt,
     paymentCents,
     capitalCents,
-    null,
+    balanceAfterCents,
     'cuota',
     sortOrder,
     extraJson,
   )
 
+  await recomputeBolsaSnapshot(db, bolsaId, { capitalBalanceCents: balanceAfterCents })
+  return readBolsa(db, bolsaId)
+}
+
+/**
+ * @param {import('./sql-conn.js').GastosDb} db
+ * @param {string} bolsaId
+ * @param {string} movementId
+ */
+export async function deleteBolsaMovement(db, bolsaId, movementId) {
+  const movRow = await getRow(
+    db,
+    'SELECT * FROM bolsa_movements WHERE id = ? AND bolsa_id = ?',
+    movementId,
+    bolsaId,
+  )
+  if (!movRow) throw applicationError('Movimiento no encontrado.', 'NOT_FOUND', 404)
+  if (!movementRowIsDeletable(movRow)) {
+    throw applicationError('Solo se pueden quitar pagos aplicados manualmente desde el presupuesto.', 'NOT_DELETABLE', 403)
+  }
+
+  const bolsaRow = await getRow(db, 'SELECT * FROM bolsas WHERE id = ?', bolsaId)
+  if (!bolsaRow) throw applicationError('Bolsa no encontrada.', 'NOT_FOUND', 404)
+
+  const extra = parseExtraJson(movRow.extra_json)
+  const link = movementLinkFromExtra(extra)
+
+  if (link) {
+    const state = await readHouseholdState(db)
+    const months = state.months && typeof state.months === 'object' ? state.months : {}
+    const month = months[link.budgetMonthKey]
+    if (month) {
+      const target = findBudgetLine(month, link.expenseId, link.chargeId)
+      if (target.line) markLineUnpaid(target.line)
+      await writeHouseholdState(db, { ...state, saveScope: 'all', months })
+    }
+  }
+
+  const restoredCapital =
+    (Number(bolsaRow.capital_balance_cents) || 0) + (Number(movRow.capital_cents) || 0)
+
+  await runSql(db, 'DELETE FROM bolsa_movements WHERE id = ? AND bolsa_id = ?', movementId, bolsaId)
+  await recomputeBolsaSnapshot(db, bolsaId, { capitalBalanceCents: restoredCapital })
   return readBolsa(db, bolsaId)
 }

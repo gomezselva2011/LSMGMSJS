@@ -124,6 +124,8 @@ describe('bolsas API apply-payment', () => {
     const last = detail.movements[detail.movements.length - 1]
     assert.equal(last.paymentCents, 43311)
     assert.equal(last.appliedDate, '2026-11-05')
+    assert.ok(bolsa.capitalBalanceCents < 2007833)
+    assert.equal(bolsa.pendingInstallments, 85)
   })
 
   it('rejects duplicate application', async () => {
@@ -140,6 +142,57 @@ describe('bolsas API apply-payment', () => {
     const res = mockRes()
     await handleBolsasApi(jsonReq('POST', `/api/bolsas/${TIGGO_BOLSA_ID}/apply-payment`, payload, admin), res, () => {}, options)
     assert.equal(res.statusCode, 409)
+  })
+
+  it('deletes manual movement and reverts budget line', async () => {
+    await seedBudget()
+    const admin = { id: 'u1', role: 'admin' }
+    const options = { dbPath, getUser: () => admin }
+    const payload = {
+      sourceMonthKey: '2026-10',
+      expenseId: 'exp-ot-camioneta',
+      applyToMonthKey: '2026-11',
+      appliedDate: '2026-11-05',
+    }
+    const applyRes = mockRes()
+    await handleBolsasApi(
+      jsonReq('POST', `/api/bolsas/${TIGGO_BOLSA_ID}/apply-payment`, payload, admin),
+      applyRes,
+      () => {},
+      options,
+    )
+    const applied = JSON.parse(applyRes.body)
+    const manualId = applied.movements[applied.movements.length - 1].id
+
+    const delRes = mockRes()
+    await handleBolsasApi(
+      jsonReq('DELETE', `/api/bolsas/${TIGGO_BOLSA_ID}/movements/${manualId}`, null, admin),
+      delRes,
+      () => {},
+      options,
+    )
+    assert.equal(delRes.statusCode, 200)
+    const bolsa = JSON.parse(delRes.body)
+    assert.equal(bolsa.movements.length, 25)
+
+    const db = await ensureGastosDb({ root: dir, dbPath })
+    const state = await readHouseholdState(db)
+    assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'unpaid')
+  })
+
+  it('forbids deleting seeded movements via API', async () => {
+    await seedBudget()
+    const admin = { id: 'u1', role: 'admin' }
+    const db = await ensureGastosDb({ root: dir, dbPath })
+    const detail = await readBolsa(db, TIGGO_BOLSA_ID)
+    const res = mockRes()
+    await handleBolsasApi(
+      jsonReq('DELETE', `/api/bolsas/${TIGGO_BOLSA_ID}/movements/${detail.movements[0].id}`, null, admin),
+      res,
+      () => {},
+      { dbPath, getUser: () => admin },
+    )
+    assert.equal(res.statusCode, 403)
   })
 
   it('forbids viewers from applying payment', async () => {

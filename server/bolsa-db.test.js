@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { closeGastosDb, ensureGastosDb, getMeta, readHouseholdState } from './db.js'
-import { applyBolsaPayment, listBolsas, readBolsa } from './bolsa-db.js'
+import { applyBolsaPayment, deleteBolsaMovement, listBolsas, readBolsa } from './bolsa-db.js'
 import { writeHouseholdState } from './db.js'
 import { createTiggoBolsaSeed } from './bolsa-seed.js'
 
@@ -78,6 +78,59 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'paid')
     const after = await readBolsa(db, bolsaId)
     assert.equal(after.movements.length, before.movements.length + 1)
+    assert.ok(after.capitalBalanceCents < before.capitalBalanceCents)
+    assert.equal(after.pendingInstallments, before.pendingInstallments - 1)
+    assert.equal(after.paidInstallments, before.paidInstallments + 1)
+    const last = after.movements[after.movements.length - 1]
+    assert.equal(last.balanceAfterCents, after.capitalBalanceCents)
+    assert.equal(last.deletable, true)
+  })
+
+  it('deleteBolsaMovement restores capital and budget unpaid', async () => {
+    const root = await tmpRoot()
+    const db = await ensureGastosDb({ root })
+    const bolsas = await listBolsas(db)
+    const bolsaId = bolsas[0].id
+    await writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      saveScope: 'all',
+      months: {
+        '2026-10': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+        },
+        '2026-11': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+        },
+      },
+    })
+    const before = await readBolsa(db, bolsaId)
+    await applyBolsaPayment(db, bolsaId, {
+      sourceMonthKey: '2026-10',
+      expenseId: 'exp-ot-camioneta',
+      applyToMonthKey: '2026-11',
+      appliedDate: '2026-11-05',
+    })
+    const applied = await readBolsa(db, bolsaId)
+    const manualId = applied.movements[applied.movements.length - 1].id
+    await deleteBolsaMovement(db, bolsaId, manualId)
+    const after = await readBolsa(db, bolsaId)
+    assert.equal(after.movements.length, before.movements.length)
+    assert.equal(after.capitalBalanceCents, before.capitalBalanceCents)
+    assert.equal(after.pendingInstallments, before.pendingInstallments)
+    const state = await readHouseholdState(db)
+    assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'unpaid')
+  })
+
+  it('deleteBolsaMovement rejects seeded PDF movements', async () => {
+    const root = await tmpRoot()
+    const db = await ensureGastosDb({ root })
+    const bolsaId = (await listBolsas(db))[0].id
+    const detail = await readBolsa(db, bolsaId)
+    await assert.rejects(() => deleteBolsaMovement(db, bolsaId, detail.movements[0].id), (error) => {
+      assert.equal(error.code, 'NOT_DELETABLE')
+      return true
+    })
   })
 
   it('does not re-seed when bolsas already exist', async () => {

@@ -106,6 +106,56 @@ function projectionListHtml(bolsa) {
   return `<ul class="bolsa-projection-list">${items.join('')}</ul>`
 }
 
+/** @param {{ appliedDate?: string, balanceAfterCents?: number|null, sortOrder?: number }[]} movements */
+export function bolsaCapitalChartSeries(movements) {
+  const list = Array.isArray(movements) ? [...movements] : []
+  list.sort((a, b) => {
+    const so = (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    if (so !== 0) return so
+    return String(a.appliedDate || '').localeCompare(String(b.appliedDate || ''))
+  })
+  return list
+    .filter((mov) => mov.balanceAfterCents != null && Number.isFinite(Number(mov.balanceAfterCents)))
+    .map((mov) => ({
+      label: formatAppliedDate(mov.appliedDate),
+      balanceCents: Number(mov.balanceAfterCents),
+    }))
+}
+
+export function bolsaChartHtml(bolsa) {
+  const series = bolsaCapitalChartSeries(bolsa?.movements)
+  if (!series.length) {
+    return ''
+  }
+  const maxBalance = Math.max(...series.map((entry) => entry.balanceCents), 1)
+  const maxBarPx = 120
+  const cols = series
+    .map((entry) => {
+      const height = Math.max(4, Math.round((entry.balanceCents / maxBalance) * maxBarPx))
+      return `
+        <div class="chart-col" title="${escapeHtml(formatMoney(entry.balanceCents, 'USD'))}">
+          <span class="chart-bar-label">${escapeHtml(formatMoney(entry.balanceCents, 'USD'))}</span>
+          <span class="chart-bar is-net-pos" style="height:${height}px"></span>
+          <span class="chart-axis-label">${escapeHtml(entry.label)}</span>
+        </div>`
+    })
+    .join('')
+
+  return `
+    <section class="chart-card bolsa-capital-chart" aria-labelledby="bolsa-chart-title">
+      <div class="chart-head">
+        <div>
+          <h3 class="bolsa-table-title" id="bolsa-chart-title">Saldo capital por movimiento</h3>
+          <p class="chart-caption">Cronológico (incluye pagos manuales). Altura = saldo capital después de cada movimiento.</p>
+        </div>
+      </div>
+      <div class="chart-plot" role="img" aria-label="Saldo de capital después de cada movimiento de la bolsa">
+        ${cols}
+      </div>
+    </section>
+  `
+}
+
 export function bolsaApplyPaymentHtml(bolsa, state, { canEdit = false } = {}) {
   if (!canEdit || !bolsa?.budgetExpenseId) return ''
   const lines = listBolsaBudgetPaymentLines(state, bolsa.budgetExpenseId)
@@ -221,6 +271,11 @@ export function bolsaMovementsHtml(bolsa) {
       <td class="num">${formatMoney(mov.capitalCents, 'USD')}</td>
       <td class="num">${mov.balanceAfterCents == null ? '—' : formatMoney(mov.balanceAfterCents, 'USD')}</td>
       <td>${escapeHtml(movementTypeLabel(mov.movementType))}</td>
+      <td class="bolsa-row-actions">${
+        mov.deletable
+          ? `<button type="button" class="btn btn-row" data-action="bolsa-delete-movement" data-movement-id="${escapeHtml(mov.id)}" title="Quitar pago y desvincular del presupuesto">Quitar pago</button>`
+          : ''
+      }</td>
     </tr>`,
     )
     .join('')
@@ -237,6 +292,7 @@ export function bolsaMovementsHtml(bolsa) {
             <th>Capital</th>
             <th>Saldo capital</th>
             <th>Tipo</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -246,7 +302,7 @@ export function bolsaMovementsHtml(bolsa) {
 }
 
 export function bolsaPanelHtml(bolsa, state, options = {}) {
-  return `${bolsaSummaryHtml(bolsa)}${bolsaApplyPaymentHtml(bolsa, state, options)}${bolsaMovementsHtml(bolsa)}`
+  return `${bolsaSummaryHtml(bolsa)}${bolsaChartHtml(bolsa)}${bolsaApplyPaymentHtml(bolsa, state, options)}${bolsaMovementsHtml(bolsa)}`
 }
 
 export async function fetchBolsaDetail(bolsaId) {
@@ -280,5 +336,18 @@ export async function applyBolsaPaymentRequest(bolsaId, payload) {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `No se pudo aplicar el pago (${res.status})`)
+  return body
+}
+
+export async function deleteBolsaMovementRequest(bolsaId, movementId) {
+  const res = await fetch(
+    `/api/bolsas/${encodeURIComponent(bolsaId)}/movements/${encodeURIComponent(movementId)}`,
+    {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    },
+  )
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `No se pudo quitar el pago (${res.status})`)
   return body
 }
