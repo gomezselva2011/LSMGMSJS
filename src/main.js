@@ -117,6 +117,19 @@ let bolsaList = []
 let selectedBolsaId = TIGGO_BOLSA_ID
 let bolsaLoadError = ''
 let bolsaLoading = false
+let bolsaLoadGeneration = 0
+/** @type {Map<string, object>} */
+const bolsaDetailCache = new Map()
+
+function rememberBolsaDetail(detail) {
+  if (!detail?.id) return
+  bolsaDetailCache.set(detail.id, detail)
+  bolsaDetail = detail
+}
+
+function invalidateBolsaDetailCache(bolsaId) {
+  if (bolsaId) bolsaDetailCache.delete(bolsaId)
+}
 let compareFrom = null
 let compareTo = null
 let selectedRubroId = null
@@ -858,55 +871,65 @@ function renderViewTabs() {
 }
 
 async function loadBolsaDetail(bolsaId = selectedBolsaId) {
-  if (bolsaLoading) return
+  const generation = ++bolsaLoadGeneration
+  const targetId = bolsaId || selectedBolsaId
   bolsaLoading = true
   bolsaLoadError = ''
   try {
     bolsaList = await fetchBolsaList()
+    if (generation !== bolsaLoadGeneration) return
     if (!bolsaList.length) {
       bolsaDetail = null
       selectedBolsaId = ''
       return
     }
     const pick =
-      bolsaList.find((item) => item.id === bolsaId) ||
+      bolsaList.find((item) => item.id === targetId) ||
+      bolsaList.find((item) => item.id === selectedBolsaId) ||
       bolsaList.find((item) => item.id === TIGGO_BOLSA_ID) ||
       bolsaList[0]
     selectedBolsaId = pick.id
-    bolsaDetail = await fetchBolsaDetail(pick.id)
+    const detail = await fetchBolsaDetail(pick.id)
+    if (generation !== bolsaLoadGeneration) return
+    rememberBolsaDetail(detail)
   } catch (error) {
-    bolsaDetail = null
+    if (generation !== bolsaLoadGeneration) return
+    bolsaDetail = bolsaDetailCache.get(selectedBolsaId) || null
     bolsaLoadError = error?.message || 'No se pudo cargar la bolsa.'
   } finally {
-    bolsaLoading = false
+    if (generation === bolsaLoadGeneration) bolsaLoading = false
   }
 }
 
 function renderBolsas() {
   const panel = document.querySelector('#bolsas-panel')
   if (!panel) return
-  if (bolsaLoading) {
-    panel.innerHTML = '<p class="bolsa-empty">Cargando bolsa…</p>'
-    loadBolsaDetail().then(() => {
-      if (currentView === 'bolsas') renderBolsas()
-    })
-    return
-  }
-  if (!bolsaDetail && !bolsaLoadError) {
-    panel.innerHTML = '<p class="bolsa-empty">Cargando bolsa…</p>'
-    loadBolsaDetail().then(() => {
-      if (currentView === 'bolsas') renderBolsas()
-    })
-    return
-  }
-  if (bolsaLoadError) {
+  let detail =
+    bolsaDetail?.id === selectedBolsaId ? bolsaDetail : bolsaDetailCache.get(selectedBolsaId) || null
+  if (detail && detail !== bolsaDetail) bolsaDetail = detail
+
+  if (bolsaLoadError && !detail) {
     panel.innerHTML = `<p class="bolsa-empty bolsa-error">${escapeHtml(bolsaLoadError)}</p>`
     return
   }
-  panel.innerHTML = bolsaPanelHtml(bolsaDetail, state, {
-    canEdit: canEdit(),
-    bolsas: bolsaList,
-  })
+  if (detail) {
+    const loadingNote = bolsaLoading
+      ? '<p class="bolsa-empty bolsa-loading-note">Actualizando…</p>'
+      : ''
+    panel.innerHTML =
+      loadingNote +
+      bolsaPanelHtml(detail, state, {
+        canEdit: canEdit(),
+        bolsas: bolsaList,
+      })
+    return
+  }
+  panel.innerHTML = '<p class="bolsa-empty">Cargando bolsa…</p>'
+  if (!bolsaLoading) {
+    loadBolsaDetail(selectedBolsaId).then(() => {
+      if (currentView === 'bolsas') renderBolsas()
+    })
+  }
 }
 
 function renderAnalytics() {
@@ -2397,7 +2420,8 @@ function onAppClick(event) {
     const nextId = button.dataset.bolsaId
     if (!nextId || nextId === selectedBolsaId) return
     selectedBolsaId = nextId
-    bolsaDetail = null
+    bolsaLoadError = ''
+    if (bolsaDetailCache.has(nextId)) bolsaDetail = bolsaDetailCache.get(nextId)
     renderBolsas()
     loadBolsaDetail(nextId).then(() => {
       if (currentView === 'bolsas') renderBolsas()
@@ -2415,7 +2439,7 @@ function confirmRemoveBolsaMovement(movementId) {
     onConfirm: () => {
       deleteBolsaMovementRequest(bolsaDetail.id, movementId)
         .then(async (bolsa) => {
-          bolsaDetail = bolsa
+          rememberBolsaDetail(bolsa)
           await loadBudgetFromServer()
           showToast('Pago quitado y desvinculado del presupuesto.')
           renderBolsas()
@@ -2430,7 +2454,7 @@ async function submitBolsaBudgetLink(form) {
   const budgetExpenseId = form.budgetExpenseId?.value?.trim() || ''
   if (!budgetExpenseId) return
   try {
-    bolsaDetail = await updateBolsaBudgetLinkRequest(bolsaDetail.id, budgetExpenseId)
+    rememberBolsaDetail(await updateBolsaBudgetLinkRequest(bolsaDetail.id, budgetExpenseId))
     showToast('Enlace al presupuesto guardado.')
     renderBolsas()
   } catch (error) {
@@ -2446,13 +2470,15 @@ async function submitBolsaApplyPayment(form) {
   const chargeId = chargeRaw || null
   const appliedDate = form.appliedDate?.value?.trim() || undefined
   try {
-    bolsaDetail = await applyBolsaPaymentRequest(bolsaDetail.id, {
-      sourceMonthKey,
-      expenseId,
-      chargeId,
-      applyToMonthKey,
-      appliedDate,
-    })
+    rememberBolsaDetail(
+      await applyBolsaPaymentRequest(bolsaDetail.id, {
+        sourceMonthKey,
+        expenseId,
+        chargeId,
+        applyToMonthKey,
+        appliedDate,
+      }),
+    )
     await loadBudgetFromServer()
     showToast('Pago aplicado a la bolsa y marcado en el presupuesto.')
     renderBolsas()
