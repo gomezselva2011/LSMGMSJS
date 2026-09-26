@@ -784,6 +784,12 @@ export async function handleAuthRequest(req, res, next, store) {
       }
 
       if (isBolsasApiUrl(req.url)) {
+        const mutating =
+          req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE'
+        if (mutating && !canWriteBudget(user)) {
+          sendJson(res, 403, { error: 'Solo un admin puede modificar bolsas.' })
+          return true
+        }
         if (typeof next === 'function') await next()
         return false
       }

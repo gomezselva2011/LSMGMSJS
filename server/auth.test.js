@@ -19,6 +19,8 @@ import {
 } from './auth.js'
 import { closeGastosDb, listUsers, openGastosDb, readHouseholdState } from './db.js'
 import { handleGastosApi } from './gastos-api.js'
+import { handleBolsasApi } from './bolsas-api.js'
+import { TIGGO_BOLSA_ID } from './bolsa-seed.js'
 import {
   DEV_DUMMY_ADMIN_PASSWORD,
   DEV_DUMMY_ADMIN2_PASSWORD,
@@ -413,6 +415,55 @@ describe('auth store and HTTP', () => {
     assert.equal(res.statusCode, 200)
     const onDisk = await readHouseholdState(await openGastosDb({ dbPath }))
     assert.equal(onDisk.currentMonth, '2026-10')
+  })
+
+  it('forbids a viewer from POST apply-payment on bolsas', async () => {
+    const { cookie: adminCookie } = await loginAs(SEED_ADMIN)
+    await handleAuthRequest(
+      jsonReq(
+        'POST',
+        '/api/users',
+        { name: 'Invitada Bolsa', username: 'invbolsa', password: 'secreto1', role: 'viewer' },
+        adminCookie,
+      ),
+      mockRes(),
+      () => {},
+      store,
+    )
+    const { cookie } = await loginAs({ username: 'invbolsa', password: 'secreto1' })
+    const res = mockRes()
+    let forwarded = false
+    await handleAuthRequest(
+      jsonReq('POST', `/api/bolsas/${TIGGO_BOLSA_ID}/apply-payment`, { sourceMonthKey: '2026-10' }, cookie),
+      res,
+      () => {
+        forwarded = true
+      },
+      store,
+    )
+    assert.equal(res.statusCode, 403)
+    assert.equal(forwarded, false)
+  })
+
+  it('lets an admin POST bolsas apply-payment through auth', async () => {
+    const { cookie } = await loginAs(SEED_ADMIN)
+    const dbPath = store.dbPath
+    const req = jsonReq('POST', `/api/bolsas/${TIGGO_BOLSA_ID}/apply-payment`, {
+      sourceMonthKey: '2026-10',
+      expenseId: 'exp-ot-camioneta',
+      applyToMonthKey: '2026-10',
+      appliedDate: '2026-10-05',
+    }, cookie)
+    const res = mockRes()
+    await handleAuthRequest(
+      req,
+      res,
+      async () => {
+        await handleBolsasApi(req, res, () => {}, { dbPath, getUser: () => store.userFromRequest(req) })
+      },
+      store,
+    )
+    assert.notEqual(res.statusCode, 403)
   })
 
   it('lets lsotelon write gastos as a second admin', async () => {

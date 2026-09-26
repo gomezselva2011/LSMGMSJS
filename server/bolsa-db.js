@@ -1,4 +1,5 @@
-import { getMeta, setMeta } from './db.js'
+import { randomBytes } from 'node:crypto'
+import { getMeta, isMonthKey, readHouseholdState, setMeta, writeHouseholdState } from './db.js'
 import { createTiggoBolsaSeed } from './bolsa-seed.js'
 
 export const BOLSA_SCHEMA_VERSION = 2
@@ -194,4 +195,206 @@ export async function readBolsa(db, bolsaId) {
   )
   bolsa.movements = movementRows.map(movementFromRow)
   return bolsa
+}
+
+function parseExtraJson(raw) {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function movementLinkFromExtra(extra) {
+  if (!extra) return null
+  const budgetMonthKey = extra.budgetMonthKey
+  const expenseId = extra.expenseId
+  if (!budgetMonthKey || !expenseId) return null
+  return {
+    budgetMonthKey: String(budgetMonthKey),
+    expenseId: String(expenseId),
+    chargeId: extra.chargeId == null || extra.chargeId === '' ? null : String(extra.chargeId),
+  }
+}
+
+function chargesForExpense(expense) {
+  if (!expense || typeof expense !== 'object') return []
+  const lists = [expense.charges, expense.subgastos, expense.cargos]
+  let charges = Array.isArray(expense.charges) ? expense.charges : []
+  for (const list of lists) {
+    if (Array.isArray(list) && list.length > charges.length) charges = list
+  }
+  return charges
+}
+
+function markLinePaid(item) {
+  if (!item || typeof item !== 'object') return false
+  item.paymentStatus = 'paid'
+  item.paid = true
+  if (typeof item.pagado === 'boolean') item.pagado = true
+  return true
+}
+
+function findBudgetLine(month, expenseId, chargeId) {
+  if (!month || !Array.isArray(month.expenses)) return { expense: null, line: null, kind: null }
+  const expense = month.expenses.find((entry) => entry?.id === expenseId)
+  if (!expense) return { expense: null, line: null, kind: null }
+  if (chargeId) {
+    const charge = chargesForExpense(expense).find((entry) => entry?.id === chargeId)
+    return charge ? { expense, line: charge, kind: 'charge' } : { expense, line: null, kind: null }
+  }
+  return { expense, line: expense, kind: 'expense' }
+}
+
+function lineAmountCents(line, expense, bolsa) {
+  const amount = Number(line?.amount)
+  if (Number.isFinite(amount) && amount > 0) return Math.round(amount)
+  const fallback = Number(bolsa?.installmentCents)
+  if (Number.isFinite(fallback) && fallback > 0) return Math.round(fallback)
+  return 0
+}
+
+function todayIsoDate() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function newMovementId() {
+  return `mov_${randomBytes(12).toString('hex')}`
+}
+
+function applicationError(message, code, status = 400) {
+  const error = new Error(message)
+  error.code = code
+  error.status = status
+  return error
+}
+
+async function findDuplicateApplication(db, bolsaId, { receipt, appliedDate, paymentCents, link }) {
+  const rows = await allRows(db, 'SELECT receipt, applied_date, payment_cents, extra_json FROM bolsa_movements WHERE bolsa_id = ?', bolsaId)
+  for (const row of rows) {
+    if (receipt && row.receipt && row.receipt === receipt) return true
+    const extra = movementLinkFromExtra(parseExtraJson(row.extra_json))
+    if (
+      extra &&
+      link &&
+      extra.budgetMonthKey === link.budgetMonthKey &&
+      extra.expenseId === link.expenseId &&
+      (extra.chargeId || null) === (link.chargeId || null) &&
+      row.applied_date === appliedDate &&
+      Number(row.payment_cents) === paymentCents
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * @param {import('./sql-conn.js').GastosDb} db
+ * @param {string} bolsaId
+ * @param {{ sourceMonthKey?: string, expenseId?: string, chargeId?: string|null, applyToMonthKey?: string, appliedDate?: string, receipt?: string|null }} body
+ */
+export async function applyBolsaPayment(db, bolsaId, body = {}) {
+  const sourceMonthKey = String(body.sourceMonthKey || '').trim()
+  const applyToMonthKey = String(body.applyToMonthKey || '').trim()
+  const expenseId = String(body.expenseId || '').trim()
+  const chargeId = body.chargeId == null || body.chargeId === '' ? null : String(body.chargeId).trim()
+  const appliedDate = String(body.appliedDate || todayIsoDate()).trim()
+  const receipt = body.receipt == null || body.receipt === '' ? null : String(body.receipt).trim()
+
+  if (!isMonthKey(sourceMonthKey) || !isMonthKey(applyToMonthKey)) {
+    throw applicationError('Elige mes de origen y mes donde marcar pagado.', 'INVALID_MONTH')
+  }
+  if (!expenseId) throw applicationError('Falta la línea de pago del presupuesto.', 'INVALID')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedDate)) {
+    throw applicationError('La fecha aplicada no es válida.', 'INVALID_DATE')
+  }
+
+  const bolsaRow = await getRow(db, 'SELECT * FROM bolsas WHERE id = ?', bolsaId)
+  if (!bolsaRow) throw applicationError('Bolsa no encontrada.', 'NOT_FOUND', 404)
+  const bolsa = bolsaFromRow(bolsaRow)
+  if (!bolsa.budgetExpenseId) {
+    throw applicationError('Esta bolsa no está enlazada al presupuesto.', 'NO_BUDGET_LINK')
+  }
+  if (expenseId !== bolsa.budgetExpenseId) {
+    throw applicationError('La línea elegida no corresponde a esta bolsa.', 'EXPENSE_MISMATCH')
+  }
+
+  const state = await readHouseholdState(db)
+  const months = state.months && typeof state.months === 'object' ? state.months : {}
+  const sourceMonth = months[sourceMonthKey]
+  const applyMonth = months[applyToMonthKey]
+  if (!sourceMonth) throw applicationError('No existe el mes de origen en el presupuesto.', 'SOURCE_MONTH')
+  if (!applyMonth) throw applicationError('No existe el mes destino en el presupuesto.', 'APPLY_MONTH')
+
+  const source = findBudgetLine(sourceMonth, expenseId, chargeId)
+  if (!source.line) throw applicationError('No se encontró la línea de pago en el mes de origen.', 'SOURCE_LINE')
+
+  const target = findBudgetLine(applyMonth, expenseId, chargeId)
+  if (!target.line) {
+    throw applicationError('No hay una línea equivalente en el mes destino para marcar pagada.', 'TARGET_LINE')
+  }
+
+  const paymentCents = lineAmountCents(source.line, source.expense, bolsa)
+  if (!paymentCents) throw applicationError('No se pudo determinar el monto del pago.', 'AMOUNT')
+
+  const link = {
+    budgetMonthKey: applyToMonthKey,
+    expenseId,
+    chargeId,
+    sourceMonthKey,
+  }
+
+  if (await findDuplicateApplication(db, bolsaId, { receipt, appliedDate, paymentCents, link })) {
+    throw applicationError('Este pago ya fue aplicado a la bolsa.', 'DUPLICATE', 409)
+  }
+
+  markLinePaid(target.line)
+
+  await writeHouseholdState(db, {
+    ...state,
+    saveScope: 'all',
+    months,
+  })
+
+  const sortRow = await getRow(
+    db,
+    'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM bolsa_movements WHERE bolsa_id = ?',
+    bolsaId,
+  )
+  const sortOrder = Number(sortRow?.max_order ?? -1) + 1
+  const movementId = newMovementId()
+  const capitalCents = paymentCents
+  const extraJson = JSON.stringify({
+    budgetMonthKey: applyToMonthKey,
+    expenseId,
+    ...(chargeId ? { chargeId } : {}),
+    sourceMonthKey,
+  })
+
+  await runSql(
+    db,
+    `INSERT INTO bolsa_movements (
+      id, bolsa_id, applied_date, receipt, payment_cents, capital_cents,
+      balance_after_cents, movement_type, sort_order, extra_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    movementId,
+    bolsaId,
+    appliedDate,
+    receipt,
+    paymentCents,
+    capitalCents,
+    null,
+    'cuota',
+    sortOrder,
+    extraJson,
+  )
+
+  return readBolsa(db, bolsaId)
 }

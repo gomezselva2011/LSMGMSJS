@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { closeGastosDb, ensureGastosDb, getMeta } from './db.js'
-import { listBolsas, readBolsa } from './bolsa-db.js'
+import { closeGastosDb, ensureGastosDb, getMeta, readHouseholdState } from './db.js'
+import { applyBolsaPayment, listBolsas, readBolsa } from './bolsa-db.js'
+import { writeHouseholdState } from './db.js'
 import { createTiggoBolsaSeed } from './bolsa-seed.js'
 
 describe('bolsa db (Tiggo 4 Pro MVP)', () => {
@@ -46,6 +47,37 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
 
     const schemaVersion = Number(await getMeta(db, 'schema_version'))
     assert.equal(schemaVersion, 2)
+  })
+
+  it('applyBolsaPayment marks apply-to month and inserts movement', async () => {
+    const root = await tmpRoot()
+    const db = await ensureGastosDb({ root })
+    const bolsas = await listBolsas(db)
+    const bolsaId = bolsas[0].id
+    await writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      saveScope: 'all',
+      months: {
+        '2026-10': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+        },
+        '2026-11': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+        },
+      },
+    })
+    const before = await readBolsa(db, bolsaId)
+    await applyBolsaPayment(db, bolsaId, {
+      sourceMonthKey: '2026-10',
+      expenseId: 'exp-ot-camioneta',
+      applyToMonthKey: '2026-11',
+      appliedDate: '2026-11-05',
+    })
+    const state = await readHouseholdState(db)
+    assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'paid')
+    const after = await readBolsa(db, bolsaId)
+    assert.equal(after.movements.length, before.movements.length + 1)
   })
 
   it('does not re-seed when bolsas already exist', async () => {

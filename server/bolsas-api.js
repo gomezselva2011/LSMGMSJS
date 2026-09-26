@@ -1,17 +1,25 @@
 import { ensureGastosDb, resolveDbPath } from './db.js'
-import { ensureBolsaReady, listBolsas, readBolsa } from './bolsa-db.js'
+import { applyBolsaPayment, ensureBolsaReady, listBolsas, readBolsa } from './bolsa-db.js'
+import { ROLE_ADMIN } from './household-users.js'
 
 export const BOLSAS_API_PREFIX = '/api/bolsas'
 
-export function isBolsasApiUrl(url = '') {
+export function parseBolsasApiUrl(url = '') {
   const pathname = String(url).split('?')[0].replace(/\/$/, '')
   if (pathname === BOLSAS_API_PREFIX) return { list: true }
   const prefix = `${BOLSAS_API_PREFIX}/`
-  if (pathname.startsWith(prefix)) {
-    const id = decodeURIComponent(pathname.slice(prefix.length))
-    if (id && !id.includes('/')) return { list: false, id }
+  if (!pathname.startsWith(prefix)) return null
+  const rest = pathname.slice(prefix.length)
+  const parts = rest.split('/').filter(Boolean)
+  if (parts.length === 1) return { list: false, id: decodeURIComponent(parts[0]) }
+  if (parts.length === 2 && parts[1] === 'apply-payment') {
+    return { applyPayment: true, id: decodeURIComponent(parts[0]) }
   }
   return null
+}
+
+export function isBolsasApiUrl(url = '') {
+  return parseBolsasApiUrl(url) != null
 }
 
 function sendJson(res, status, body) {
@@ -32,8 +40,23 @@ function dbOptionsFrom(options = {}) {
   }
 }
 
+async function readRequestBody(req, limit = 100_000) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > limit) {
+      const error = new Error('payload too large')
+      error.code = 'PAYLOAD_TOO_LARGE'
+      throw error
+    }
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 export async function handleBolsasApi(req, res, next, options = {}) {
-  const match = isBolsasApiUrl(req.url)
+  const match = parseBolsasApiUrl(req.url)
   if (!match) {
     next?.()
     return false
@@ -42,12 +65,51 @@ export async function handleBolsasApi(req, res, next, options = {}) {
   const dbOptions = dbOptionsFrom(options)
 
   try {
-    if (typeof options.getUser === 'function') {
-      const user = options.getUser(req)
-      if (!user) {
-        sendJson(res, 401, { error: 'Inicia sesión.' })
+    const user = typeof options.getUser === 'function' ? options.getUser(req) : null
+    if (!user) {
+      sendJson(res, 401, { error: 'Inicia sesión.' })
+      return true
+    }
+
+    const mutating = req.method === 'POST'
+    if (mutating && user.role !== ROLE_ADMIN) {
+      sendJson(res, 403, { error: 'Solo un admin puede aplicar pagos a la bolsa.' })
+      return true
+    }
+
+    if (match.applyPayment) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Allow', 'POST, OPTIONS')
+        res.end()
         return true
       }
+      if (req.method !== 'POST') {
+        res.statusCode = 405
+        res.setHeader('Allow', 'POST, OPTIONS')
+        res.end()
+        return true
+      }
+
+      const db = await ensureGastosDb(dbOptions)
+      await ensureBolsaReady(db)
+
+      let body
+      try {
+        body = JSON.parse((await readRequestBody(req)) || '{}')
+      } catch {
+        sendJson(res, 400, { error: 'JSON inválido' })
+        return true
+      }
+
+      try {
+        const bolsa = await applyBolsaPayment(db, match.id, body)
+        sendJson(res, 200, bolsa)
+      } catch (error) {
+        const status = error.status || (error.code === 'NOT_FOUND' ? 404 : error.code === 'DUPLICATE' ? 409 : 400)
+        sendJson(res, status, { error: error.message || 'No se pudo aplicar el pago.' })
+      }
+      return true
     }
 
     if (req.method !== 'GET') {
@@ -79,6 +141,10 @@ export async function handleBolsasApi(req, res, next, options = {}) {
     sendJson(res, 200, bolsa)
     return true
   } catch (error) {
+    if (error.code === 'PAYLOAD_TOO_LARGE') {
+      sendJson(res, 413, { error: 'El archivo es demasiado grande.' })
+      return true
+    }
     console.error(error)
     sendJson(res, 500, { error: 'No se pudieron leer las bolsas.' })
     return true

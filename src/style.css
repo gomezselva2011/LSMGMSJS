@@ -3120,6 +3120,36 @@ body.is-readonly .admin-only {
   margin: 0 0 0.35rem;
 }
 
+.bolsa-projection-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.bolsa-projection-list li + li {
+  margin-top: 0.35rem;
+}
+
+.bolsa-projection-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.bolsa-apply {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.bolsa-apply-form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 36rem;
+  margin-top: var(--space-3);
+}
+
 .bolsa-projection {
   max-width: 46rem;
   color: var(--muted);

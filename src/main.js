@@ -47,7 +47,13 @@ import {
   parseRate,
 } from './money.js'
 import { analyticsHtml, MODE_CLASSIFICATION, MODE_RUBRO, MODE_TOTALS, parseAnalyticsMode } from './analytics.js'
-import { bolsaPanelHtml, fetchBolsaDetail, fetchBolsaList, TIGGO_BOLSA_ID } from './bolsa.js'
+import {
+  applyBolsaPaymentRequest,
+  bolsaPanelHtml,
+  fetchBolsaDetail,
+  fetchBolsaList,
+  TIGGO_BOLSA_ID,
+} from './bolsa.js'
 import {
   inferRubro,
   isKnownRubro,
@@ -883,7 +889,7 @@ function renderBolsas() {
     panel.innerHTML = `<p class="bolsa-empty bolsa-error">${escapeHtml(bolsaLoadError)}</p>`
     return
   }
-  panel.innerHTML = bolsaPanelHtml(bolsaDetail)
+  panel.innerHTML = bolsaPanelHtml(bolsaDetail, state, { canEdit: canEdit() })
 }
 
 function renderAnalytics() {
@@ -2371,6 +2377,29 @@ function onAppClick(event) {
   }
 }
 
+async function submitBolsaApplyPayment(form) {
+  if (!canEdit() || !bolsaDetail?.id) return
+  const paymentLine = form.paymentLine?.value || ''
+  const applyToMonthKey = form.applyToMonth?.value || ''
+  const [sourceMonthKey, expenseId, chargeRaw] = paymentLine.split('|')
+  const chargeId = chargeRaw || null
+  const appliedDate = form.appliedDate?.value?.trim() || undefined
+  try {
+    bolsaDetail = await applyBolsaPaymentRequest(bolsaDetail.id, {
+      sourceMonthKey,
+      expenseId,
+      chargeId,
+      applyToMonthKey,
+      appliedDate,
+    })
+    await loadBudgetFromServer()
+    showToast('Pago aplicado a la bolsa y marcado en el presupuesto.')
+    renderBolsas()
+  } catch (error) {
+    showToast(error?.message || 'No se pudo aplicar el pago.')
+  }
+}
+
 function showFatal(message) {
   if (bootEl) bootEl.hidden = true
   if (appEl) appEl.hidden = true
@@ -2758,6 +2787,12 @@ function bindEvents() {
     const action = confirmContext
     confirmDialog.close()
     if (action) action()
+  })
+  document.querySelector('#bolsas-panel')?.addEventListener('submit', (event) => {
+    const form = event.target.closest('form[data-action="bolsa-apply-payment"]')
+    if (!form) return
+    event.preventDefault()
+    submitBolsaApplyPayment(form).catch((error) => console.error(error))
   })
 }
 
