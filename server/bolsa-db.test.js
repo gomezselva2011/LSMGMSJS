@@ -7,6 +7,7 @@ import { closeGastosDb, ensureGastosDb, getMeta, readHouseholdState } from './db
 import { applyBolsaPayment, deleteBolsaMovement, listBolsas, readBolsa } from './bolsa-db.js'
 import { writeHouseholdState } from './db.js'
 import { createTiggoBolsaSeed } from './bolsa-seed.js'
+import { TIGGO_BUDGET_EXPENSE_ID } from '../src/bolsa-budget-link.js'
 
 describe('bolsa db (Tiggo 4 Pro MVP)', () => {
   const dirs = []
@@ -43,7 +44,7 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(detail.paymentDay, 5)
     assert.equal(detail.interestRate, 14.68)
     assert.equal(detail.movements.length, 25)
-    assert.equal(detail.budgetExpenseId, 'exp-ot-camioneta')
+    assert.equal(detail.budgetExpenseId, TIGGO_BUDGET_EXPENSE_ID)
 
     const schemaVersion = Number(await getMeta(db, 'schema_version'))
     assert.equal(schemaVersion, 2)
@@ -60,17 +61,21 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
       saveScope: 'all',
       months: {
         '2026-10': {
-          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+          expenses: [
+            { id: TIGGO_BUDGET_EXPENSE_ID, name: 'Cuota Tiggo 4 Pro', amount: 43311, paymentStatus: 'unpaid' },
+          ],
         },
         '2026-11': {
-          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+          expenses: [
+            { id: TIGGO_BUDGET_EXPENSE_ID, name: 'Cuota Tiggo 4 Pro', amount: 43311, paymentStatus: 'unpaid' },
+          ],
         },
       },
     })
     const before = await readBolsa(db, bolsaId)
     await applyBolsaPayment(db, bolsaId, {
       sourceMonthKey: '2026-10',
-      expenseId: 'exp-ot-camioneta',
+      expenseId: TIGGO_BUDGET_EXPENSE_ID,
       applyToMonthKey: '2026-11',
       appliedDate: '2026-11-05',
     })
@@ -97,17 +102,21 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
       saveScope: 'all',
       months: {
         '2026-10': {
-          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+          expenses: [
+            { id: TIGGO_BUDGET_EXPENSE_ID, name: 'Cuota Tiggo 4 Pro', amount: 43311, paymentStatus: 'unpaid' },
+          ],
         },
         '2026-11': {
-          expenses: [{ id: 'exp-ot-camioneta', name: 'Cuota', amount: 43311, paymentStatus: 'unpaid' }],
+          expenses: [
+            { id: TIGGO_BUDGET_EXPENSE_ID, name: 'Cuota Tiggo 4 Pro', amount: 43311, paymentStatus: 'unpaid' },
+          ],
         },
       },
     })
     const before = await readBolsa(db, bolsaId)
     await applyBolsaPayment(db, bolsaId, {
       sourceMonthKey: '2026-10',
-      expenseId: 'exp-ot-camioneta',
+      expenseId: TIGGO_BUDGET_EXPENSE_ID,
       applyToMonthKey: '2026-11',
       appliedDate: '2026-11-05',
     })
@@ -120,6 +129,38 @@ describe('bolsa db (Tiggo 4 Pro MVP)', () => {
     assert.equal(after.pendingInstallments, before.pendingInstallments)
     const state = await readHouseholdState(db)
     assert.equal(state.months['2026-11'].expenses[0].paymentStatus, 'unpaid')
+  })
+
+  it('applyBolsaPayment rejects Himla line for Tiggo bolsa', async () => {
+    const root = await tmpRoot()
+    const db = await ensureGastosDb({ root })
+    const bolsaId = (await listBolsas(db))[0].id
+    await writeHouseholdState(db, {
+      version: 1,
+      currentMonth: '2026-10',
+      saveScope: 'all',
+      months: {
+        '2026-10': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Himla', amount: 62000, paymentStatus: 'unpaid' }],
+        },
+        '2026-11': {
+          expenses: [{ id: 'exp-ot-camioneta', name: 'Himla', amount: 62000, paymentStatus: 'unpaid' }],
+        },
+      },
+    })
+    await assert.rejects(
+      () =>
+        applyBolsaPayment(db, bolsaId, {
+          sourceMonthKey: '2026-10',
+          expenseId: 'exp-ot-camioneta',
+          applyToMonthKey: '2026-11',
+          appliedDate: '2026-11-20',
+        }),
+      (error) => {
+        assert.equal(error.code, 'EXPENSE_MISMATCH')
+        return true
+      },
+    )
   })
 
   it('deleteBolsaMovement rejects seeded PDF movements', async () => {

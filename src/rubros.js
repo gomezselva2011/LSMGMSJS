@@ -86,6 +86,8 @@ const SEED_RUBRO_BY_EXPENSE = {
   'exp-sa-casa': RUBRO_VIVIENDA,
   'exp-pr-casa': RUBRO_VIVIENDA,
   'exp-ot-camioneta': RUBRO_CAMIONETAS,
+  'exp-ot-tiggo-4-cuota': RUBRO_CAMIONETAS,
+  'exp-ot-himla-cuota': RUBRO_CAMIONETAS,
   'exp-pr-camioneta': RUBRO_CAMIONETAS,
   'exp-pr-gasolina': RUBRO_CAMIONETAS,
   'exp-ot-tc-lenin': RUBRO_CREDITO,

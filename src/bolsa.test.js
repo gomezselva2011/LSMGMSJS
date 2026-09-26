@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import {
   bolsaChartHtml,
   bolsaCapitalChartSeries,
-  budgetLineLabelForBolsa,
   listBolsaBudgetPaymentLines,
 } from './bolsa.js'
+import { TIGGO_BOLSA_ID, TIGGO_BUDGET_EXPENSE_ID } from './bolsa-budget-link.js'
 
 describe('bolsa budget payment lines', () => {
-  it('uses canonical Tiggo label even if expense was renamed Himla', () => {
+  it('excludes Himla on legacy camioneta id from Tiggo bolsa', () => {
     const state = {
       months: {
         '2026-10': {
@@ -19,17 +19,42 @@ describe('bolsa budget payment lines', () => {
               amount: 62000,
               currency: 'NIO',
             },
+            {
+              id: 'exp-ot-camioneta',
+              name: 'Chery Tiggo 4pro',
+              amount: 45000,
+              currency: 'NIO',
+            },
           ],
         },
       },
     }
-    const bolsa = { budgetExpenseId: 'exp-ot-camioneta', name: 'Chery Tiggo 4 Pro (CrediQ)' }
-    const lines = listBolsaBudgetPaymentLines(state, bolsa.budgetExpenseId, {
-      budgetLineLabel: budgetLineLabelForBolsa(bolsa),
-    })
+    const bolsa = { id: TIGGO_BOLSA_ID, budgetExpenseId: TIGGO_BUDGET_EXPENSE_ID, name: 'Chery Tiggo 4 Pro (CrediQ)' }
+    const lines = listBolsaBudgetPaymentLines(state, bolsa)
     assert.equal(lines.length, 1)
-    assert.match(lines[0].label, /Cuota Tiggo 4 Pro \(CrediQ\)/)
+    assert.match(lines[0].label, /Chery Tiggo 4pro/)
     assert.doesNotMatch(lines[0].label, /Himla/)
+  })
+
+  it('includes dedicated Tiggo expense id', () => {
+    const state = {
+      months: {
+        '2026-11': {
+          expenses: [
+            {
+              id: TIGGO_BUDGET_EXPENSE_ID,
+              name: 'Cuota Tiggo 4 Pro (CrediQ)',
+              amount: 43311,
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    }
+    const bolsa = { id: TIGGO_BOLSA_ID, budgetExpenseId: TIGGO_BUDGET_EXPENSE_ID }
+    const lines = listBolsaBudgetPaymentLines(state, bolsa)
+    assert.equal(lines.length, 1)
+    assert.match(lines[0].label, /Cuota Tiggo 4 Pro/)
   })
 })
 

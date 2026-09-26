@@ -1,6 +1,11 @@
 import { randomBytes } from 'node:crypto'
 import { getMeta, isMonthKey, readHouseholdState, setMeta, writeHouseholdState } from './db.js'
 import { createTiggoBolsaSeed } from './bolsa-seed.js'
+import {
+  TIGGO_BOLSA_ID,
+  TIGGO_BUDGET_EXPENSE_ID,
+  bolsaAllowsBudgetExpense,
+} from '../src/bolsa-budget-link.js'
 
 export const BOLSA_SCHEMA_VERSION = 2
 
@@ -178,9 +183,19 @@ export async function seedBolsaIfEmpty(db) {
   return true
 }
 
+async function migrateBolsaBudgetLinks(db) {
+  await runSql(
+    db,
+    `UPDATE bolsas SET budget_expense_id = ? WHERE id = ? AND (budget_expense_id IS NULL OR budget_expense_id = 'exp-ot-camioneta')`,
+    TIGGO_BUDGET_EXPENSE_ID,
+    TIGGO_BOLSA_ID,
+  )
+}
+
 export async function ensureBolsaReady(db) {
   await ensureBolsaSchema(db)
   await seedBolsaIfEmpty(db)
+  await migrateBolsaBudgetLinks(db)
 }
 
 export async function listBolsas(db) {
@@ -428,10 +443,6 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
   if (!bolsa.budgetExpenseId) {
     throw applicationError('Esta bolsa no está enlazada al presupuesto.', 'NO_BUDGET_LINK')
   }
-  if (expenseId !== bolsa.budgetExpenseId) {
-    throw applicationError('La línea elegida no corresponde a esta bolsa.', 'EXPENSE_MISMATCH')
-  }
-
   const state = await readHouseholdState(db)
   const months = state.months && typeof state.months === 'object' ? state.months : {}
   const sourceMonth = months[sourceMonthKey]
@@ -441,6 +452,9 @@ export async function applyBolsaPayment(db, bolsaId, body = {}) {
 
   const source = findBudgetLine(sourceMonth, expenseId, chargeId)
   if (!source.line) throw applicationError('No se encontró la línea de pago en el mes de origen.', 'SOURCE_LINE')
+  if (!bolsaAllowsBudgetExpense(bolsa, source.expense)) {
+    throw applicationError('La línea elegida no corresponde a esta bolsa (ej. Himla ≠ Tiggo 4).', 'EXPENSE_MISMATCH')
+  }
 
   const target = findBudgetLine(applyMonth, expenseId, chargeId)
   if (!target.line) {
