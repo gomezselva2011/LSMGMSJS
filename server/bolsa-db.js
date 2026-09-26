@@ -193,19 +193,8 @@ async function ensureMissingStandardBolsas(db) {
   return insertedIds
 }
 
-const BOLSA_CAPITAL_CHAIN_META = 'bolsa_capital_chain_v1'
-
-async function ensureBolsaCapitalChainMigrated(db) {
-  if (await getMeta(db, BOLSA_CAPITAL_CHAIN_META)) return
-  const bolsaIds = await allRows(db, 'SELECT id FROM bolsas')
-  for (const row of bolsaIds) {
-    await recomputeBolsaSnapshot(db, row.id)
-  }
-  await setMeta(db, BOLSA_CAPITAL_CHAIN_META, '1')
-}
-
-/** @type {WeakMap<object, true>} */
-const bolsaReadyByDb = new WeakMap()
+/** Bump when standard bolsa seeds or migrations change. */
+const BOLSA_INIT_VERSION = '4'
 
 async function migrateBolsaBudgetLinks(db) {
   await runSql(
@@ -217,16 +206,16 @@ async function migrateBolsaBudgetLinks(db) {
 }
 
 export async function ensureBolsaReady(db) {
-  if (bolsaReadyByDb.has(db)) return
   await ensureBolsaSchema(db)
-  await seedBolsaIfEmpty(db)
-  const insertedIds = await ensureMissingStandardBolsas(db)
-  await migrateBolsaBudgetLinks(db)
-  for (const bolsaId of insertedIds) {
-    await recomputeBolsaSnapshot(db, bolsaId)
+  const initDone = await getMeta(db, 'bolsa_init_version')
+  if (initDone === BOLSA_INIT_VERSION) {
+    await ensureMissingStandardBolsas(db)
+    return
   }
-  await ensureBolsaCapitalChainMigrated(db)
-  bolsaReadyByDb.set(db, true)
+  await seedBolsaIfEmpty(db)
+  await ensureMissingStandardBolsas(db)
+  await migrateBolsaBudgetLinks(db)
+  await setMeta(db, 'bolsa_init_version', BOLSA_INIT_VERSION)
 }
 
 export async function updateBolsaBudgetLink(db, bolsaId, budgetExpenseId) {

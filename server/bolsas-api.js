@@ -2,7 +2,6 @@ import { ensureGastosDb, resolveDbPath } from './db.js'
 import {
   applyBolsaPayment,
   deleteBolsaMovement,
-  ensureBolsaReady,
   listBolsas,
   readBolsa,
   updateBolsaBudgetLink,
@@ -109,7 +108,6 @@ export async function handleBolsasApi(req, res, next, options = {}) {
       }
 
       const db = await ensureGastosDb(dbOptions)
-      await ensureBolsaReady(db)
 
       try {
         const bolsa = await deleteBolsaMovement(db, match.id, match.movementId)
@@ -138,7 +136,6 @@ export async function handleBolsasApi(req, res, next, options = {}) {
       }
 
       const db = await ensureGastosDb(dbOptions)
-      await ensureBolsaReady(db)
 
       let body
       try {
@@ -173,7 +170,6 @@ export async function handleBolsasApi(req, res, next, options = {}) {
       }
 
       const db = await ensureGastosDb(dbOptions)
-      await ensureBolsaReady(db)
 
       let body
       try {
@@ -207,7 +203,6 @@ export async function handleBolsasApi(req, res, next, options = {}) {
     }
 
     const db = await ensureGastosDb(dbOptions)
-    await ensureBolsaReady(db)
 
     if (match.list) {
       sendJson(res, 200, { bolsas: await listBolsas(db) })
