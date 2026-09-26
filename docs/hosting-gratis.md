@@ -24,17 +24,34 @@ No hay una URL `https://gastos-hogar.onrender.com` hasta que *tú* crees el serv
 
 ---
 
-## 0. GitHub: Create repo (obligatorio antes de Render)
+## 0. GitHub (repo ya creado)
 
-Render despliega desde **GitHub, GitLab o Bitbucket**. El remoto de la máquina del agente es Origin (`origin.cursor.com`, repo temporal tipo `agent_temp`). **Render no puede conectar eso.**
+Repo: **https://github.com/melissa2021hmr/LSMGMSJS**
 
-1. En Cursor, **Create repo** (crear el repositorio en tu GitHub).
-2. Empujar esta rama o `main` a ese GitHub.
-3. Recién entonces Render puede ver el código (`package.json`, `render-free-turso.yaml`, `render.yaml`).
+Render despliega desde GitHub. El agente de Cursor empuja a Origin (`origin.cursor.com`); **esta VM no tiene credenciales de GitHub**, así que el push a `LSMGMSJS` hay que hacerlo desde tu cuenta.
 
-Si GitHub ya está conectado y el código está ahí, sáltate Create repo. Si no, **hazlo antes de abrir Render o Turso no va a desplegar la app**.
+Rama de trabajo en el agente: `cursor/gastos-hogar-05fc`. En GitHub queremos **`main`** (rama por defecto de Render).
 
-Rama de trabajo en el agente: `cursor/gastos-hogar-05fc`. En GitHub puedes usar esa rama o fusionar a `main` y desplegar `main`.
+### Empujar el código (en tu PC o en Cursor, con tu login de GitHub)
+
+Si ya estás en el proyecto Gastos en Cursor:
+
+```bash
+git remote add github https://github.com/melissa2021hmr/LSMGMSJS.git
+git push -u github cursor/gastos-hogar-05fc:main
+```
+
+Desde GitHub CLI (en tu máquina, no en el agente):
+
+```bash
+gh auth login
+cd /ruta/del/proyecto-gastos
+git push -u https://github.com/melissa2021hmr/LSMGMSJS.git cursor/gastos-hogar-05fc:main
+```
+
+En Render, conecta **melissa2021hmr/LSMGMSJS**, rama **`main`**. Archivos que deben verse: `package.json`, `render.yaml`, `render-free-turso.yaml`, `server/`, `docs/hosting-gratis.md`.
+
+No subas `.env` ni `data/gastos.sqlite`.
 
 ---
 
