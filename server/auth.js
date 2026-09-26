@@ -20,6 +20,7 @@ import {
   SEED_ADMIN,
   SEED_ADMIN_2,
 } from './household-users.js'
+import { isBolsasApiUrl } from './bolsas-api.js'
 
 const scrypt = promisify(scryptCb)
 
@@ -778,6 +779,11 @@ export async function handleAuthRequest(req, res, next, store) {
           sendJson(res, 403, { error: 'Solo un admin puede guardar el presupuesto.' })
           return true
         }
+        if (typeof next === 'function') await next()
+        return false
+      }
+
+      if (isBolsasApiUrl(req.url)) {
         if (typeof next === 'function') await next()
         return false
       }
