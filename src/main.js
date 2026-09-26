@@ -91,6 +91,8 @@ let persistWarning = ''
 let formContext = null
 let confirmContext = null
 let toastTimer = 0
+let toastViewportBound = false
+const TOAST_MARGIN_PX = 16
 let currentView = 'budget'
 let analyticsMode = MODE_TOTALS
 let compareFrom = null
@@ -198,15 +200,61 @@ function persist(options) {
   return true
 }
 
-function showToast(message) {
+function resetToastPosition() {
+  if (!toastEl) return
+  toastEl.style.top = ''
+  toastEl.style.left = ''
+  toastEl.style.bottom = ''
+  toastEl.style.transform = ''
+}
+
+function bindToastViewport() {
+  if (toastViewportBound || !toastEl || !window.visualViewport) return
+  toastViewportBound = true
+  const reposition = () => {
+    if (toastEl.hidden) return
+    positionToastInView()
+  }
+  window.visualViewport.addEventListener('resize', reposition)
+  window.visualViewport.addEventListener('scroll', reposition)
+  window.addEventListener('scroll', reposition, { passive: true })
+}
+
+/** Keep the toast inside the visible viewport (mobile scroll, keyboard, dialogs). */
+function positionToastInView() {
+  if (!toastEl || toastEl.hidden) return
+  const vv = window.visualViewport
+  if (!vv) {
+    resetToastPosition()
+    return
+  }
+  const height = toastEl.offsetHeight || 44
+  let top = vv.offsetTop + vv.height - height - TOAST_MARGIN_PX
+  const minTop = vv.offsetTop + TOAST_MARGIN_PX
+  if (top < minTop) top = minTop
+  const left = vv.offsetLeft + vv.width / 2
+  toastEl.style.bottom = 'auto'
+  toastEl.style.top = `${top}px`
+  toastEl.style.left = `${left}px`
+  toastEl.style.transform = 'translateX(-50%)'
+}
+
+function showToast(message, options = {}) {
   if (!toastEl) return
   toastEl.textContent = message
   toastEl.hidden = false
+  bindToastViewport()
+  positionToastInView()
+  window.requestAnimationFrame(() => positionToastInView())
   window.clearTimeout(toastTimer)
+  const duration =
+    options.duration ??
+    (message === 'Guardado' || /guardad/i.test(String(message)) ? 3200 : 2200)
   toastTimer = window.setTimeout(() => {
     toastEl.hidden = true
     toastEl.textContent = ''
-  }, 2200)
+    resetToastPosition()
+  }, duration)
 }
 
 async function saveNow() {
